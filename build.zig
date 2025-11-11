@@ -259,9 +259,8 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint",
         "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap",
         "-sALLOW_MEMORY_GROWTH=1",
-        "-sINITIAL_MEMORY=67108864", // 64MB
+        "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)
         "-sSTACK_SIZE=5242880", // 5MB
-        "-sUSE_OFFSET_CONVERTER=1", // Required for @returnAddress
         "-sENVIRONMENT=web",
         "-sMODULARIZE=1",
         "-sEXPORT_NAME=createParticleLifeModule",

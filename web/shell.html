@@ -217,7 +217,9 @@
             },
             printErr: function(text) {
                 console.error(text);
-            }
+            },
+            // Note: Initial memory is 128MB (set in build.zig)
+            // This is needed for our 64MB heap + compiled code + stack
         };
         
         // Canvas and context

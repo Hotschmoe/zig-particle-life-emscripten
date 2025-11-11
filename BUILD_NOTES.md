@@ -74,6 +74,16 @@ var heap_memory: [HEAP_SIZE]u8 align(16) = undefined;
 
 All allocations are linear and never freed. When restarting the simulation, we call `resetHeap()` to reclaim all memory.
 
+### Memory Breakdown
+
+Total WASM initial memory: **128MB** (134,217,728 bytes)
+- **64MB** - Particle simulation heap (our static array)
+- **~5MB** - Stack size (for function calls and local variables)
+- **~3MB** - Compiled code and static data
+- **~56MB** - Runtime overhead and growth buffer
+
+The linker needs at least ~72MB to link successfully, so we allocate 128MB to have plenty of room.
+
 ## File Structure
 
 ```
@@ -121,10 +131,14 @@ The `--sysroot` flag tells Zig where to find Emscripten's system headers.
 - `-sEXPORTED_FUNCTIONS=...` - List of functions to export
 - `-sEXPORTED_RUNTIME_METHODS=ccall,cwrap` - JS helpers for calling WASM
 - `-sALLOW_MEMORY_GROWTH=1` - Allow heap to grow if needed
-- `-sINITIAL_MEMORY=67108864` - Start with 64MB
-- `-sUSE_OFFSET_CONVERTER=1` - Required for `@returnAddress` in allocator
+- `-sINITIAL_MEMORY=134217728` - Start with 128MB (64MB heap + code + stack + runtime overhead)
+- `-sSTACK_SIZE=5242880` - 5MB stack size
+- `-sENVIRONMENT=web` - Target web browsers only
 - `-sMODULARIZE=1` - Generate as ES6 module
+- `-sEXPORT_NAME=createParticleLifeModule` - Module factory function name
 - `-Oz --closure 1` - Maximum size optimization (ReleaseSmall mode)
+
+**Note:** We don't need `-sUSE_OFFSET_CONVERTER` because we use a custom bump allocator that doesn't rely on `@returnAddress` from the standard library.
 
 ## Comparison with Reference Implementations
 
@@ -160,7 +174,8 @@ We chose the **manual approach** because:
 
 - **Binary size**: ~50-100KB (gzipped) with ReleaseSmall
 - **Performance**: 16,384 particles @ 60 FPS on modern hardware
-- **Memory**: Fixed 64MB heap, no garbage collection
+- **Memory**: 128MB WASM initial memory (64MB heap + runtime)
+- **Allocation**: Fixed bump allocator, no garbage collection, instant resets
 
 ## Automatic Emsdk Setup (Windows)
 

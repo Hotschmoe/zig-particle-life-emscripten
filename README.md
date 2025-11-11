@@ -156,12 +156,13 @@ Uses semi-implicit Euler integration:
 The WASM binary is optimized for size using:
 - `-Doptimize=ReleaseSmall` flag
 - Minimal external dependencies
-- Efficient memory layout
-- Vectorized operations where possible
+- Efficient memory layout (custom bump allocator)
+- Freestanding approach (no std library overhead)
 
 Typical performance:
 - 16,384 particles @ 60 FPS on modern hardware
 - ~100KB WASM binary size (gzipped)
+- 128MB initial memory (64MB heap + code + stack + runtime)
 
 ## Configuration
 
