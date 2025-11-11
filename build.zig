@@ -257,13 +257,11 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         "-o",
         "web/particle-life.html",
         "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint",
-        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap",
+        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8,HEAP8,HEAPU32,HEAP32,HEAPF32,HEAPF64",
         "-sALLOW_MEMORY_GROWTH=1",
         "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)
         "-sSTACK_SIZE=5242880", // 5MB
         "-sENVIRONMENT=web",
-        "-sMODULARIZE=1",
-        "-sEXPORT_NAME=createParticleLifeModule",
         "--shell-file",
     });
     emcc_command.addFileArg(b.path("web/shell.html"));
