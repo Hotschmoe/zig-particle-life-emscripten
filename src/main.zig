@@ -74,7 +74,7 @@ fn allocBytes(size: usize, alignment: usize) ?[*]u8 {
     
     if (new_offset > HEAP_SIZE) return null;
     
-    const ptr = &heap_memory[aligned_offset];
+    const ptr: [*]u8 = @ptrCast(&heap_memory[aligned_offset]);
     heap_offset = new_offset;
     return ptr;
 }

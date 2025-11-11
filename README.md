@@ -24,8 +24,9 @@ Particle Life is an emergent behavior simulation where different particle specie
 ## Prerequisites
 
 - **Zig 0.15** or later - [Download here](https://ziglang.org/download/)
-- **Emscripten SDK** (emsdk) - Installation instructions below
+- **Git** (for automatic emsdk download on Windows)
 - **Python 3** for local testing server
+- **Emscripten SDK** - Auto-installed on Windows, manual install on Linux/macOS (see below)
 
 ## Building
 
@@ -39,44 +40,49 @@ We use a **two-step build process**:
 
 This approach avoids compatibility issues with Zig's standard library on the `wasm32-emscripten` target.
 
-### Step 1: Install Emscripten
+### Quick Start (Windows) - Automatic Setup! 🎉
 
-Emscripten is required to link the WASM binary:
+On Windows, the build script will **automatically download and install Emscripten** for you:
+
+```bash
+# Just run this - no manual setup needed!
+zig build -Dtarget=wasm32-emscripten
+
+# Or with size optimization (recommended)
+zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall
+```
+
+The first build will:
+1. Clone the emsdk repository into your project directory
+2. Install the latest Emscripten SDK
+3. Activate it automatically
+4. Build your project
+
+**Note:** The `emsdk/` directory is added to `.gitignore` and won't be committed.
+
+### Manual Setup (Linux/macOS)
+
+For Linux and macOS, manual Emscripten installation is currently required:
 
 ```bash
 # Clone emsdk
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk
 
-# Windows
-emsdk install latest
-emsdk activate latest
-
-# Linux/macOS
+# Install and activate
 ./emsdk install latest
 ./emsdk activate latest
-```
 
-### Step 2: Build for WebAssembly
-
-**Windows:**
-```bash
-zig build -Dtarget=wasm32-emscripten --sysroot C:/emsdk/upstream/emscripten
-```
-
-**Linux/macOS:**
-```bash
+# Build with explicit sysroot
 zig build -Dtarget=wasm32-emscripten --sysroot ~/emsdk/upstream/emscripten
-```
 
-**With size optimization (recommended):**
-```bash
-# Windows
-zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --sysroot C:/emsdk/upstream/emscripten
-
-# Linux/macOS
+# With optimization
 zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --sysroot ~/emsdk/upstream/emscripten
 ```
+
+> 💡 **TODO:** Automatic setup for Linux/macOS will be added in a future update.
+
+### Build Output
 
 The build will generate:
 - `web/particle-life.html` - Main HTML page

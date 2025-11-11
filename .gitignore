@@ -1,2 +1,28 @@
-.zig-cache/
+# Zig build artifacts
 zig-out/
+zig-cache/
+.zig-cache/
+
+# Emscripten SDK (auto-downloaded)
+emsdk/
+
+# Build outputs
+web/particle-life.html
+web/particle-life.js
+web/particle-life.wasm
+web/particle-life.data
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
