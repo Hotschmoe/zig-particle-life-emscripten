@@ -251,7 +251,7 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
 
     const emcc_path = b.pathJoin(&.{ emscripten_path, emcc_exe });
 
-    // Create emcc link command
+    // Create emcc link command (Canvas 2D version)
     const emcc_command = b.addSystemCommand(&[_][]const u8{emcc_path});
     emcc_command.addArgs(&[_][]const u8{
         "-o",
@@ -268,20 +268,49 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     emcc_command.addFileArg(lib.getEmittedBin());
     emcc_command.step.dependOn(&lib.step);
 
+    // Create emcc link command (WebGPU version)
+    const emcc_webgpu_command = b.addSystemCommand(&[_][]const u8{emcc_path});
+    emcc_webgpu_command.addArgs(&[_][]const u8{
+        "-o",
+        "web/particle-life-webgpu.html",
+        "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint",
+        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8,HEAP8,HEAPU32,HEAP32,HEAPF32,HEAPF64",
+        "-sALLOW_MEMORY_GROWTH=1",
+        "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)
+        "-sSTACK_SIZE=5242880", // 5MB
+        "-sENVIRONMENT=web",
+        "--shell-file",
+    });
+    emcc_webgpu_command.addFileArg(b.path("web/shell-webgpu.html"));
+    emcc_webgpu_command.addFileArg(lib.getEmittedBin());
+    emcc_webgpu_command.step.dependOn(&lib.step);
+
     // Add optimization flags based on build mode
     switch (optimize) {
-        .Debug => emcc_command.addArg("-O0"),
-        .ReleaseSafe => emcc_command.addArg("-O2"),
-        .ReleaseFast => emcc_command.addArg("-O3"),
+        .Debug => {
+            emcc_command.addArg("-O0");
+            emcc_webgpu_command.addArg("-O0");
+        },
+        .ReleaseSafe => {
+            emcc_command.addArg("-O2");
+            emcc_webgpu_command.addArg("-O2");
+        },
+        .ReleaseFast => {
+            emcc_command.addArg("-O3");
+            emcc_webgpu_command.addArg("-O3");
+        },
         .ReleaseSmall => {
             emcc_command.addArgs(&[_][]const u8{ "-Oz", "--closure", "1" });
+            emcc_webgpu_command.addArgs(&[_][]const u8{ "-Oz", "--closure", "1" });
         },
     }
 
-    // Install to default step
+    // Install to default step (both Canvas2D and WebGPU versions)
     b.getInstallStep().dependOn(&emcc_command.step);
+    b.getInstallStep().dependOn(&emcc_webgpu_command.step);
 
     // Deploy step explicitly copies to web directory
     const deploy_step = b.step("deploy", "Build and deploy WASM to web directory");
     deploy_step.dependOn(&emcc_command.step);
+    deploy_step.dependOn(&emcc_webgpu_command.step);
 }

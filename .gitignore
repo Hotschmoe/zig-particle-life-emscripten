@@ -12,6 +12,12 @@ web/particle-life.js
 web/particle-life.wasm
 web/particle-life.data
 
+# WebGPU build outputs
+web/particle-life-webgpu.html
+web/particle-life-webgpu.js
+web/particle-life-webgpu.wasm
+web/particle-life-webgpu.data
+
 # IDE
 .vscode/
 .idea/
