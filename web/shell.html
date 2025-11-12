@@ -384,6 +384,18 @@
         let clearActionPoint;
         let isSIMDEnabled;
         
+        // NEW: Optimized single-call frame update
+        let frameUpdate;
+        let getCameraData;
+        let updateCanvasSize;
+        let updateCameraZoom;
+        let panCamera;
+        let centerCamera;
+        let setPaused;
+        let isPausedState;
+        let getCurrentFPS;
+        let setActionState;
+        
         // WebGPU Shaders
         const particleGlowShader = `
 struct Particle {
@@ -600,6 +612,11 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             canvas.width = width;
             canvas.height = height;
             
+            // Notify WASM of canvas size change
+            if (updateCanvasSize) {
+                updateCanvasSize(width, height);
+            }
+            
             if (device && context) {
                 // Reconfigure context
                 context.configure({
@@ -629,10 +646,6 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                         { binding: 1, resource: blueNoiseTextureView },
                     ],
                 });
-                
-                // Update camera aspect ratio
-                const aspectRatio = width / height;
-                cameraExtentY = cameraExtentX / aspectRatio;
             }
         }
         
@@ -826,6 +839,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             clearActionPoint = Module.cwrap('clearActionPoint', null, []);
             isSIMDEnabled = Module.cwrap('isSIMDEnabled', 'number', []);
             
+            // NEW: Optimized frame update functions
+            frameUpdate = Module.cwrap('frameUpdate', null, ['number']);
+            getCameraData = Module.cwrap('getCameraData', 'number', []);
+            updateCanvasSize = Module.cwrap('updateCanvasSize', null, ['number', 'number']);
+            updateCameraZoom = Module.cwrap('updateCameraZoom', null, ['number', 'number', 'number']);
+            panCamera = Module.cwrap('panCamera', null, ['number', 'number']);
+            centerCamera = Module.cwrap('centerCamera', null, []);
+            setPaused = Module.cwrap('setPaused', null, ['number']);
+            isPausedState = Module.cwrap('isPausedState', 'number', []);
+            getCurrentFPS = Module.cwrap('getCurrentFPS', 'number', []);
+            setActionState = Module.cwrap('setActionState', null, ['number', 'number', 'number', 'number', 'number']);
+            
             // Log SIMD status
             const simdEnabled = isSIMDEnabled();
             console.log(`WASM SIMD: ${simdEnabled ? 'ENABLED ✓' : 'DISABLED (fallback to scalar)'}`);
@@ -836,6 +861,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             // Update UI
             document.getElementById('simdStat').textContent = simdEnabled ? 'Enabled' : 'Disabled';
             document.getElementById('simdStat').style.color = simdEnabled ? '#4CAF50' : '#ff9800';
+            
+            console.log('✓ Optimized frame update functions loaded (reduced boundary crossings)');
         }
         
         function createBuffers() {
@@ -1022,37 +1049,35 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         
         function updateUniforms() {
-            const aspectRatio = canvas.width / canvas.height;
-            
-            // Smooth camera zoom (using -Math.expm1 like reference)
-            const currentTime = performance.now();
-            const dt = (currentTime - lastTime) / 1000;
-            const cameraExtentXDelta = (cameraExtentXTarget - cameraExtentX) * (-Math.expm1(-20 * dt));
-            cameraExtentX += cameraExtentXDelta;
-            cameraExtentY = cameraExtentX / aspectRatio;
-            
-            // Apply zoom anchor
-            if (zoomAnchor) {
-                cameraX -= cameraExtentXDelta * zoomAnchor[0];
-                cameraY -= cameraExtentXDelta * zoomAnchor[1] / aspectRatio;
-            }
-            
-            const pixelsPerUnit = canvas.width / (2.0 * cameraExtentX);
-            
             // Only update uniform buffer if it exists
-            if (uniformBuffer) {
-                // Update uniform data
-                const uniformData = new Float32Array(8);
-                uniformData[0] = cameraX;
-                uniformData[1] = cameraY;
-                uniformData[2] = cameraExtentX;
-                uniformData[3] = cameraExtentY;
-                uniformData[4] = 3.0; // particle size
-                uniformData[5] = pixelsPerUnit;
-                // uniformData[6-7] padding
-                
-                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-            }
+            if (!uniformBuffer) return 1.0;
+            
+            // Get camera data from WASM (already computed in frameUpdate)
+            const cameraDataPtr = getCameraData();
+            const cameraDataView = new Float32Array(
+                Module.HEAPU8.buffer,
+                cameraDataPtr,
+                5
+            );
+            
+            // Format: [center_x, center_y, extent_x, extent_y, pixels_per_unit]
+            const cameraX = cameraDataView[0];
+            const cameraY = cameraDataView[1];
+            const cameraExtentX = cameraDataView[2];
+            const cameraExtentY = cameraDataView[3];
+            const pixelsPerUnit = cameraDataView[4];
+            
+            // Update uniform data
+            const uniformData = new Float32Array(8);
+            uniformData[0] = cameraX;
+            uniformData[1] = cameraY;
+            uniformData[2] = cameraExtentX;
+            uniformData[3] = cameraExtentY;
+            uniformData[4] = 3.0; // particle size
+            uniformData[5] = pixelsPerUnit;
+            // uniformData[6-7] padding
+            
+            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
             
             return pixelsPerUnit;
         }
@@ -1116,17 +1141,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         function animate() {
             if (!isRunning) return;
             
-            const currentTime = performance.now();
-            const dt = Math.min((currentTime - lastTime) / 1000, 0.05); // Cap at 50ms
-            lastTime = currentTime;
-            
-            // Update FPS counter
-            frameCount++;
-            if (currentTime - fpsUpdateTime > 1000) {
-                document.getElementById('fps').textContent = frameCount;
-                frameCount = 0;
-                fpsUpdateTime = currentTime;
-            }
+            const currentTime = performance.now() / 1000.0; // Convert to seconds for WASM
             
             // Skip simulation and rendering if we're reinitializing
             if (isReinitializing) {
@@ -1134,50 +1149,43 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 return;
             }
             
-            // Run simulation step
-            if (!isPaused) {
-                // Set mouse interaction
-                if (actionPoint) {
-                    const aspect = canvas.width / canvas.height;
-                    const centerX = canvas.width / 2;
-                    const centerY = canvas.height / 2;
-                    
-                    const worldX = cameraX + (actionPoint[0] - centerX) / canvas.width * 2 * cameraExtentX;
-                    const worldY = cameraY - (actionPoint[1] - centerY) / canvas.height * 2 * cameraExtentY;
-                    const worldDx = actionDrag[0] / canvas.width * 2 * cameraExtentX;
-                    const worldDy = -actionDrag[1] / canvas.height * 2 * cameraExtentY;
-                    
-                    // Match reference implementation - no extra scaling
-                    setActionPoint(worldX, worldY, worldDx, worldDy, 20.0, cameraExtentX / 16);
-                    actionDrag = [0, 0];
-                } else {
-                    clearActionPoint();
-                }
-                
-                simulationStep(dt);
-                updateGPUBuffers();
+            // Update mouse/action state in WASM (single call)
+            if (actionPoint) {
+                setActionState(true, actionPoint[0], actionPoint[1], actionDrag[0], actionDrag[1]);
+                actionDrag = [0, 0]; // Reset drag after sending
+            } else {
+                setActionState(false, 0, 0, 0, 0);
             }
             
-            // Render
+            // OPTIMIZED: Single call to WASM that does EVERYTHING
+            // - Delta time calculation
+            // - FPS tracking
+            // - Camera updates (zoom, pan)
+            // - Mouse action world-space conversion
+            // - Physics simulation (binning, forces, integration)
+            // All in one call, minimal boundary crossing!
+            frameUpdate(currentTime);
+            
+            // Update FPS display from WASM-computed value (once per second is fine)
+            if (Math.floor(currentTime) !== Math.floor(lastTime)) {
+                const fps = getCurrentFPS();
+                document.getElementById('fps').textContent = fps;
+            }
+            lastTime = currentTime;
+            
+            // Copy particle data from WASM to GPU (zero-copy pointer access)
+            updateGPUBuffers();
+            
+            // Render frame
             render();
             
             requestAnimationFrame(animate);
         }
         
         function centerView() {
-            cameraX = 0;
-            cameraY = 0;
+            // Camera state is now managed in WASM
+            centerCamera();
             zoomAnchor = null;
-            
-            const W = Math.round(simulationWidth / 64) * 32;
-            const H = Math.round(simulationHeight / 64) * 32;
-            const aspectRatio = canvas.width / canvas.height;
-            
-            if ((2 * W) / (2 * H) > aspectRatio) {
-                cameraExtentXTarget = W;
-            } else {
-                cameraExtentXTarget = H * aspectRatio;
-            }
         }
         
         // Event handlers
@@ -1243,8 +1251,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             });
             
             document.getElementById('togglePause').addEventListener('click', (e) => {
-                isPaused = !isPaused;
-                e.target.textContent = isPaused ? 'Resume' : 'Pause';
+                // Pause state now managed in WASM
+                const currentlyPaused = isPausedState();
+                setPaused(!currentlyPaused);
+                e.target.textContent = (!currentlyPaused) ? 'Resume' : 'Pause';
             });
             
             document.getElementById('centerView').addEventListener('click', () => {
@@ -1430,8 +1440,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                     const dx = e.clientX - mouseDragX;
                     const dy = e.clientY - mouseDragY;
                     
-                    cameraX -= dx / canvas.width * 2 * cameraExtentX;
-                    cameraY += dy / canvas.height * 2 * cameraExtentY;
+                    // Camera panning now handled by WASM
+                    panCamera(dx, dy);
                     
                     mouseDragX = e.clientX;
                     mouseDragY = e.clientY;
@@ -1461,13 +1471,13 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             canvas.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const factor = Math.pow(1.25, e.deltaY / 120);
-                cameraExtentXTarget *= factor;
-                cameraExtentXTarget = Math.max(10, Math.min(10000, cameraExtentXTarget));
                 
-                zoomAnchor = [
-                    2.0 * e.clientX / canvas.width - 1.0,
-                    1.0 - 2.0 * e.clientY / canvas.height,
-                ];
+                // Camera zoom now handled by WASM
+                const anchorX = 2.0 * e.clientX / canvas.width - 1.0;
+                const anchorY = 1.0 - 2.0 * e.clientY / canvas.height;
+                updateCameraZoom(factor, anchorX, anchorY);
+                
+                zoomAnchor = [anchorX, anchorY];
             });
             
             // Keyboard

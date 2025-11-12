@@ -256,7 +256,7 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     emcc_command.addArgs(&[_][]const u8{
         "-o",
         "web/particle-life.html",
-        "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_getForcesData,_getSpeciesCount,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint,_isSIMDEnabled",
+        "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_getForcesData,_getSpeciesCount,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint,_isSIMDEnabled,_frameUpdate,_getCameraData,_updateCanvasSize,_updateCameraZoom,_panCamera,_centerCamera,_setPaused,_isPausedState,_getCurrentFPS,_setActionState",
         "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8,HEAP8,HEAPU32,HEAP32,HEAPF32,HEAPF64",
         "-sALLOW_MEMORY_GROWTH=1",
         "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)

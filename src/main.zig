@@ -196,6 +196,34 @@ var sim_options: SimulationOptions = .{
 };
 
 // ============================================================================
+// Frame Timing and Camera State (moved from JavaScript)
+// ============================================================================
+
+var last_frame_time: f64 = 0.0;
+var frame_count: u32 = 0;
+var fps_update_time: f64 = 0.0;
+var current_fps: u32 = 60;
+var is_paused: bool = false;
+
+// Camera state
+var camera_x: f32 = 0.0;
+var camera_y: f32 = 0.0;
+var camera_extent_x: f32 = 512.0;
+var camera_extent_y: f32 = 288.0;
+var camera_extent_x_target: f32 = 512.0;
+
+// Mouse/action state (updated from JS)
+var has_action_point: bool = false;
+var action_screen_x: f32 = 0.0;
+var action_screen_y: f32 = 0.0;
+var action_drag_x: f32 = 0.0;
+var action_drag_y: f32 = 0.0;
+
+// Screen dimensions (updated from JS)
+var canvas_width: f32 = 1920.0;
+var canvas_height: f32 = 1080.0;
+
+// ============================================================================
 // Random Number Generator (SplitMix32)
 // ============================================================================
 
@@ -938,6 +966,163 @@ export fn setActionPoint(x: f32, y: f32, vx: f32, vy: f32, force: f32, radius: f
 
 export fn clearActionPoint() void {
     sim_options.action_force = 0.0;
+}
+
+// ============================================================================
+// Camera and Screen Updates (moved from JavaScript)
+// ============================================================================
+
+export fn updateCanvasSize(width: f32, height: f32) void {
+    canvas_width = width;
+    canvas_height = height;
+
+    // Update camera aspect ratio
+    const aspect_ratio = width / height;
+    camera_extent_y = camera_extent_x / aspect_ratio;
+}
+
+export fn updateCameraZoom(factor: f32, anchor_x: f32, anchor_y: f32) void {
+    _ = anchor_x; // TODO: Implement zoom anchoring in future optimization
+    _ = anchor_y;
+    camera_extent_x_target *= factor;
+    camera_extent_x_target = @max(10.0, @min(10000.0, camera_extent_x_target));
+}
+
+export fn panCamera(dx: f32, dy: f32) void {
+    camera_x -= dx / canvas_width * 2.0 * camera_extent_x;
+    camera_y += dy / canvas_height * 2.0 * camera_extent_y;
+}
+
+export fn centerCamera() void {
+    camera_x = 0.0;
+    camera_y = 0.0;
+
+    const W = sim_options.right - sim_options.left;
+    const H = sim_options.top - sim_options.bottom;
+    const aspect_ratio = canvas_width / canvas_height;
+
+    if (W / H > aspect_ratio) {
+        camera_extent_x_target = W * 0.5;
+    } else {
+        camera_extent_x_target = H * 0.5 * aspect_ratio;
+    }
+}
+
+export fn getCameraData() [*]const f32 {
+    // Return pointer to camera data array for GPU uniform updates
+    // Format: [center_x, center_y, extent_x, extent_y, pixels_per_unit]
+    const camera_data = struct {
+        var data: [5]f32 = undefined;
+    };
+
+    camera_data.data[0] = camera_x;
+    camera_data.data[1] = camera_y;
+    camera_data.data[2] = camera_extent_x;
+    camera_data.data[3] = camera_extent_y;
+    camera_data.data[4] = canvas_width / (2.0 * camera_extent_x); // pixels_per_unit
+
+    return &camera_data.data;
+}
+
+export fn setPaused(paused: bool) void {
+    is_paused = paused;
+}
+
+export fn isPausedState() bool {
+    return is_paused;
+}
+
+export fn getCurrentFPS() u32 {
+    return current_fps;
+}
+
+// ============================================================================
+// Unified Frame Update (KEY OPTIMIZATION)
+// ============================================================================
+
+// This is the main optimization: a SINGLE function call per frame that does
+// everything in Zig, minimizing JS/WASM boundary crossings.
+//
+// JS only needs to call this once per frame, then copy GPU buffers.
+export fn frameUpdate(current_time: f64) void {
+    // Calculate delta time (capped at 50ms to prevent spiral of death)
+    var dt: f32 = 0.016;
+    if (last_frame_time > 0.0) {
+        dt = @min(@as(f32, @floatCast(current_time - last_frame_time)), 0.05);
+    }
+    last_frame_time = current_time;
+
+    // Update FPS counter
+    frame_count += 1;
+    if (current_time - fps_update_time > 1.0) {
+        current_fps = frame_count;
+        frame_count = 0;
+        fps_update_time = current_time;
+    }
+
+    // Update camera zoom (smooth interpolation)
+    const camera_extent_x_delta = (camera_extent_x_target - camera_extent_x) * (-expm1(-20.0 * dt));
+    camera_extent_x += camera_extent_x_delta;
+
+    // Update camera aspect ratio
+    const aspect_ratio = canvas_width / canvas_height;
+    camera_extent_y = camera_extent_x / aspect_ratio;
+
+    // Skip simulation if paused
+    if (is_paused) {
+        return;
+    }
+
+    // Handle mouse action (convert screen coords to world coords)
+    if (has_action_point) {
+        const center_x = canvas_width * 0.5;
+        const center_y = canvas_height * 0.5;
+
+        const world_x = camera_x + (action_screen_x - center_x) / canvas_width * 2.0 * camera_extent_x;
+        const world_y = camera_y - (action_screen_y - center_y) / canvas_height * 2.0 * camera_extent_y;
+        const world_dx = action_drag_x / canvas_width * 2.0 * camera_extent_x;
+        const world_dy = -action_drag_y / canvas_height * 2.0 * camera_extent_y;
+
+        sim_options.action_x = world_x;
+        sim_options.action_y = world_y;
+        sim_options.action_vx = world_dx;
+        sim_options.action_vy = world_dy;
+        sim_options.action_force = 20.0;
+        sim_options.action_radius = camera_extent_x / 16.0;
+    } else {
+        sim_options.action_force = 0.0;
+    }
+
+    // Run simulation step
+    sim_options.dt = dt;
+    binParticles();
+
+    if (use_simd) {
+        computeForcesSIMD();
+    } else {
+        computeForces();
+    }
+
+    updateParticles(dt);
+}
+
+// Helper for smooth camera zoom (matches reference implementation)
+inline fn expm1(x: f32) f32 {
+    // exp(x) - 1, using Taylor series for better numerical stability near 0
+    if (abs(x) < 0.001) return x;
+    return exp(x) - 1.0;
+}
+
+// ============================================================================
+// Mouse/Action State Updates (called from JavaScript)
+// ============================================================================
+
+export fn setActionState(active: bool, screen_x: f32, screen_y: f32, drag_x: f32, drag_y: f32) void {
+    has_action_point = active;
+    action_screen_x = screen_x;
+    action_screen_y = screen_y;
+    action_drag_x = drag_x;
+    action_drag_y = drag_y;
 }
 
 // No main() function needed - this is a WASM library, not an executable
