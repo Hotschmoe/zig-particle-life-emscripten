@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="0; url=particle-life.html">
     <title>Particle Life - Zig WebAssembly</title>
     <style>
         * {
@@ -176,95 +177,11 @@
 <body>
     <div class="container">
         <h1>🌌 Particle Life Simulator</h1>
-        <div class="subtitle">Built with Zig, WebAssembly, and Modern Web Graphics</div>
-        
-        <div class="version-cards">
-            <a href="particle-life-webgpu.html" class="card" id="webgpu-card">
-                <div class="card-icon">🚀</div>
-                <div class="card-title">WebGPU Version</div>
-                <div class="card-description">
-                    Modern GPU-accelerated rendering with compute shaders. 
-                    Best performance and visual quality.
-                </div>
-                <div class="card-tech">
-                    <span class="tech-badge">WebGPU</span>
-                    <span class="tech-badge">Zig</span>
-                    <span class="tech-badge">WGSL</span>
-                </div>
-                <div class="note">
-                    <strong>Note:</strong> Requires Chrome 113+, Edge 113+, or other WebGPU-enabled browser.
-                </div>
-            </a>
-            
-            <a href="particle-life.html" class="card">
-                <div class="card-icon">🎨</div>
-                <div class="card-title">Canvas 2D Version</div>
-                <div class="card-description">
-                    Classic 2D canvas rendering with CPU-based graphics.
-                    Works on all modern browsers.
-                </div>
-                <div class="card-tech">
-                    <span class="tech-badge">Canvas 2D</span>
-                    <span class="tech-badge">Zig</span>
-                    <span class="tech-badge">WASM</span>
-                </div>
-            </a>
-        </div>
-        
-        <div class="features">
-            <h2>✨ Features</h2>
-            <ul>
-                <li>Multiple particle species with custom interactions</li>
-                <li>Spatial hash grid for O(n) collision detection</li>
-                <li>Real-time force simulation (attraction/repulsion)</li>
-                <li>Interactive mouse/touch controls</li>
-                <li>Configurable simulation parameters</li>
-                <li>Smooth 60 FPS animation</li>
-                <li>Pan and zoom camera controls</li>
-                <li>Optimized for size and performance</li>
-            </ul>
-        </div>
-        
-        <div class="footer">
-            <p>Zig + WebAssembly Implementation</p>
-            <p>Original WebGPU concept by <a href="https://lisyarus.github.io/blog" target="_blank">@lisyarus</a></p>
-            <p style="margin-top: 10px;">
-                <a href="https://github.com/ziglang/zig" target="_blank">Zig</a> • 
-                <a href="https://webassembly.org" target="_blank">WebAssembly</a> • 
-                <a href="https://www.w3.org/TR/webgpu/" target="_blank">WebGPU</a>
-            </p>
-        </div>
+        <div class="subtitle">Redirecting to simulator...</div>
+        <p style="text-align: center; margin-top: 20px;">
+            If you're not redirected automatically, <a href="particle-life.html" style="color: #4CAF50;">click here</a>.
+        </p>
     </div>
-    
-    <script>
-        // Check WebGPU support and update UI
-        async function checkWebGPUSupport() {
-            const webgpuCard = document.getElementById('webgpu-card');
-            
-            if (!navigator.gpu) {
-                webgpuCard.style.opacity = '0.6';
-                webgpuCard.style.cursor = 'not-allowed';
-                webgpuCard.onclick = (e) => {
-                    e.preventDefault();
-                    alert('WebGPU is not supported in your browser. Please use Chrome 113+ or Edge 113+.');
-                };
-                
-                const note = webgpuCard.querySelector('.note');
-                note.innerHTML = '<strong>⚠️ Not Supported:</strong> Your browser does not support WebGPU. Try the Canvas 2D version instead.';
-                note.style.background = 'rgba(244, 67, 54, 0.1)';
-                note.style.borderColor = 'rgba(244, 67, 54, 0.3)';
-                note.style.color = '#ff8a80';
-            } else {
-                const note = webgpuCard.querySelector('.note');
-                note.innerHTML = '<strong>✓ Supported:</strong> Your browser supports WebGPU. Recommended for best performance!';
-                note.style.background = 'rgba(76, 175, 80, 0.1)';
-                note.style.borderColor = 'rgba(76, 175, 80, 0.3)';
-                note.style.color = '#a5d6a7';
-            }
-        }
-        
-        checkWebGPUSupport();
-    </script>
 </body>
 </html>
 

@@ -143,6 +143,10 @@
             border: 2px solid #444;
             cursor: pointer;
         }
+        
+        .error {
+            color: #ff5555;
+        }
     </style>
 </head>
 <body>
@@ -202,6 +206,10 @@
             <span class="stat-label">Species:</span>
             <span class="stat-value" id="speciesCountStat">6</span>
         </div>
+        <div class="stat-row">
+            <span class="stat-label">Renderer:</span>
+            <span class="stat-value">WebGPU</span>
+        </div>
     </div>
     
     {{{ SCRIPT }}}
@@ -218,13 +226,13 @@
             printErr: function(text) {
                 console.error(text);
             },
-            // Note: Initial memory is 128MB (set in build.zig)
-            // This is needed for our 64MB heap + compiled code + stack
         };
         
-        // Canvas and context
+        // Canvas and WebGPU state
         const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+        let device, context, format;
+        let particleBuffer, speciesBuffer, uniformBuffer;
+        let renderPipeline, renderBindGroup;
         
         // Simulation state
         let isRunning = false;
@@ -262,14 +270,170 @@
         let setActionPoint;
         let clearActionPoint;
         
+        // WebGPU Shaders
+        const particleVertexShader = `
+struct Particle {
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    species: u32,
+}
+
+struct Species {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+}
+
+struct Uniforms {
+    viewProjection: mat4x4<f32>,
+    particleSize: f32,
+    padding: vec3<f32>,
+}
+
+@group(0) @binding(0) var<storage, read> particles: array<Particle>;
+@group(0) @binding(1) var<storage, read> species: array<Species>;
+@group(0) @binding(2) var<uniform> uniforms: Uniforms;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+}
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
+    // Quad vertices (two triangles)
+    var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    
+    let quadPos = positions[vertexIndex];
+    let particle = particles[instanceIndex];
+    let speciesData = species[particle.species];
+    
+    // Calculate world position
+    let worldPos = vec2<f32>(particle.x, particle.y);
+    let offset = quadPos * uniforms.particleSize;
+    let finalPos = worldPos + offset;
+    
+    var output: VertexOutput;
+    output.position = uniforms.viewProjection * vec4<f32>(finalPos, 0.0, 1.0);
+    output.color = vec4<f32>(speciesData.r, speciesData.g, speciesData.b, speciesData.a);
+    output.uv = quadPos;
+    
+    return output;
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+    // Circular particle with soft edge
+    let dist = length(input.uv);
+    if (dist > 1.0) {
+        discard;
+    }
+    
+    // Soft glow effect
+    let alpha = smoothstep(1.0, 0.3, dist);
+    let brightness = smoothstep(1.0, 0.0, dist) * 0.5 + 0.5;
+    
+    return vec4<f32>(input.color.rgb * brightness, input.color.a * alpha);
+}
+`;
+        
         // Initialize canvas size
         function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            if (context) {
+                context.configure({
+                    device: device,
+                    format: format,
+                    alphaMode: 'premultiplied',
+                });
+            }
         }
         
         window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        
+        // Check WebGPU support
+        async function checkWebGPUSupport() {
+            if (!navigator.gpu) {
+                document.getElementById('loading').innerHTML = `
+                    <div class="error">WebGPU Not Supported</div>
+                    <div style="font-size: 14px; margin-top: 10px;">
+                        Your browser doesn't support WebGPU.<br>
+                        Try Chrome 113+ or Edge 113+
+                    </div>
+                `;
+                return false;
+            }
+            return true;
+        }
+        
+        // Initialize WebGPU
+        async function initWebGPU() {
+            const adapter = await navigator.gpu.requestAdapter();
+            if (!adapter) {
+                throw new Error('Failed to get GPU adapter');
+            }
+            
+            device = await adapter.requestDevice();
+            context = canvas.getContext('webgpu');
+            format = navigator.gpu.getPreferredCanvasFormat();
+            
+            resizeCanvas();
+            
+            // Create shader module
+            const shaderModule = device.createShaderModule({
+                label: 'Particle Shader',
+                code: particleVertexShader,
+            });
+            
+            // Create render pipeline
+            renderPipeline = device.createRenderPipeline({
+                label: 'Particle Render Pipeline',
+                layout: 'auto',
+                vertex: {
+                    module: shaderModule,
+                    entryPoint: 'vertexMain',
+                },
+                fragment: {
+                    module: shaderModule,
+                    entryPoint: 'fragmentMain',
+                    targets: [{
+                        format: format,
+                        blend: {
+                            color: {
+                                srcFactor: 'src-alpha',
+                                dstFactor: 'one',
+                                operation: 'add',
+                            },
+                            alpha: {
+                                srcFactor: 'one',
+                                dstFactor: 'one',
+                                operation: 'add',
+                            },
+                        },
+                    }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                },
+            });
+            
+            console.log('WebGPU initialized successfully');
+        }
         
         function initWASM() {
             // Get function references from WASM module
@@ -285,6 +449,43 @@
             setLoopingBorders = Module.cwrap('setLoopingBorders', null, ['number']);
             setActionPoint = Module.cwrap('setActionPoint', null, ['number', 'number', 'number', 'number', 'number', 'number']);
             clearActionPoint = Module.cwrap('clearActionPoint', null, []);
+        }
+        
+        function createBuffers() {
+            // Create particle buffer
+            const particleDataSize = particleCount * 20; // 5 floats per particle (x, y, vx, vy, species as f32)
+            particleBuffer = device.createBuffer({
+                label: 'Particle Buffer',
+                size: particleDataSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            
+            // Create species buffer
+            const speciesDataSize = speciesCount * 16; // 4 floats per species
+            speciesBuffer = device.createBuffer({
+                label: 'Species Buffer',
+                size: speciesDataSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+            
+            // Create uniform buffer (view-projection matrix + particle size)
+            // WebGPU requires 96 bytes due to alignment rules (mat4x4 + vec4)
+            uniformBuffer = device.createBuffer({
+                label: 'Uniform Buffer',
+                size: 96, // mat4x4 (64 bytes) + vec4 (16 bytes) for proper alignment
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+            
+            // Create bind group
+            renderBindGroup = device.createBindGroup({
+                label: 'Particle Render Bind Group',
+                layout: renderPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: { buffer: particleBuffer } },
+                    { binding: 1, resource: { buffer: speciesBuffer } },
+                    { binding: 2, resource: { buffer: uniformBuffer } },
+                ],
+            });
         }
         
         function initSimulation() {
@@ -304,6 +505,9 @@
             const width = height * aspect;
             setSimulationBounds(-width, width, -height, height);
             
+            // Recreate GPU buffers
+            createBuffers();
+            
             updateUIValues();
             return true;
         }
@@ -315,71 +519,83 @@
             document.getElementById('speciesCountStat').textContent = speciesCount;
         }
         
-        function render() {
-            // Clear canvas
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+        function updateGPUBuffers() {
             // Get particle data from WASM memory
             const particleDataPtr = getParticleData();
-            const particleDataOffset = particleDataPtr;
-            
-            // Each particle: x(f32), y(f32), vx(f32), vy(f32), species(u32) = 20 bytes
-            const particleData = new Float32Array(
+            const particleDataView = new Float32Array(
                 Module.HEAPU8.buffer,
-                particleDataOffset,
+                particleDataPtr,
                 particleCount * 5
             );
             
-            // Get species color data
+            // Get species data from WASM memory
             const speciesDataPtr = getSpeciesData();
-            const speciesData = new Float32Array(
+            const speciesDataView = new Float32Array(
                 Module.HEAPU8.buffer,
                 speciesDataPtr,
                 speciesCount * 4
             );
             
-            // Calculate transform
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const scale = Math.min(canvas.width, canvas.height) / 600 * cameraZoom;
+            // Copy to GPU buffers
+            device.queue.writeBuffer(particleBuffer, 0, particleDataView);
+            device.queue.writeBuffer(speciesBuffer, 0, speciesDataView);
+        }
+        
+        function updateUniforms() {
+            // Create view-projection matrix
+            const aspect = canvas.width / canvas.height;
+            const height = 288;
+            const width = height * aspect;
             
-            // Draw particles
-            for (let i = 0; i < particleCount; i++) {
-                const offset = i * 5;
-                const x = particleData[offset];
-                const y = particleData[offset + 1];
-                const speciesId = Math.floor(particleData[offset + 4]);
-                
-                // Get species color
-                const colorOffset = speciesId * 4;
-                const r = Math.floor(speciesData[colorOffset] * 255);
-                const g = Math.floor(speciesData[colorOffset + 1] * 255);
-                const b = Math.floor(speciesData[colorOffset + 2] * 255);
-                
-                // Transform to screen coordinates
-                const screenX = centerX + (x - cameraX) * scale;
-                const screenY = centerY - (y - cameraY) * scale;
-                
-                // Only draw if on screen
-                if (screenX < -10 || screenX > canvas.width + 10 || screenY < -10 || screenY > canvas.height + 10) continue;
-                
-                // Draw particle (with glow)
-                const radius = Math.max(1, 2 * scale);
-                
-                // Glow
-                const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius * 3);
-                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.6)`);
-                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-                ctx.fillStyle = gradient;
-                ctx.fillRect(screenX - radius * 3, screenY - radius * 3, radius * 6, radius * 6);
-                
-                // Core
-                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-                ctx.beginPath();
-                ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            // Orthographic projection
+            const left = (-width - cameraX) * cameraZoom;
+            const right = (width - cameraX) * cameraZoom;
+            const bottom = (-height - cameraY) * cameraZoom;
+            const top = (height - cameraY) * cameraZoom;
+            const near = -1;
+            const far = 1;
+            
+            const matrix = new Float32Array(16);
+            matrix[0] = 2 / (right - left);
+            matrix[5] = 2 / (top - bottom);
+            matrix[10] = -2 / (far - near);
+            matrix[12] = -(right + left) / (right - left);
+            matrix[13] = -(top + bottom) / (top - bottom);
+            matrix[14] = -(far + near) / (far - near);
+            matrix[15] = 1;
+            
+            // Particle size in world units
+            const particleSize = 3.0 * cameraZoom;
+            
+            // Create uniform data (96 bytes = 24 floats)
+            const uniformData = new Float32Array(24); // 16 for matrix + 4 for vec4 (size+padding)
+            uniformData.set(matrix, 0);
+            uniformData[16] = particleSize;
+            // uniformData[17-23] remain 0 (padding)
+            
+            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+        }
+        
+        function render() {
+            const encoder = device.createCommandEncoder({ label: 'Render Encoder' });
+            const textureView = context.getCurrentTexture().createView();
+            
+            const renderPass = encoder.beginRenderPass({
+                label: 'Particle Render Pass',
+                colorAttachments: [{
+                    view: textureView,
+                    loadOp: 'clear',
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    storeOp: 'store',
+                }],
+            });
+            
+            renderPass.setPipeline(renderPipeline);
+            renderPass.setBindGroup(0, renderBindGroup);
+            renderPass.draw(6, particleCount); // 6 vertices per particle (2 triangles)
+            renderPass.end();
+            
+            device.queue.submit([encoder.finish()]);
         }
         
         function animate() {
@@ -405,6 +621,9 @@
                     const dy = mouseY - lastMouseY;
                     
                     // Convert screen to world coordinates
+                    const aspect = canvas.width / canvas.height;
+                    const height = 288;
+                    const width = height * aspect;
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
                     const scale = Math.min(canvas.width, canvas.height) / 600 * cameraZoom;
@@ -420,9 +639,11 @@
                 }
                 
                 simulationStep(dt);
+                updateGPUBuffers();
             }
             
-            // Render
+            // Update camera and render
+            updateUniforms();
             render();
             
             requestAnimationFrame(animate);
@@ -519,24 +740,48 @@
         }
         
         // Main initialization
-        function main() {
-            console.log('WebAssembly module loaded!');
+        async function main() {
+            console.log('Starting initialization...');
             
-            initWASM();
-            setupEventHandlers();
+            // Check WebGPU support
+            if (!await checkWebGPUSupport()) {
+                return;
+            }
             
-            if (!initSimulation()) return;
-            
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('controls').classList.remove('hidden');
-            document.getElementById('stats').classList.remove('hidden');
-            document.getElementById('toggleControls').classList.remove('hidden');
-            
-            isRunning = true;
-            lastTime = performance.now();
-            fpsUpdateTime = lastTime;
-            
-            animate();
+            try {
+                // Initialize WebGPU
+                await initWebGPU();
+                
+                // Initialize WASM
+                initWASM();
+                setupEventHandlers();
+                
+                // Initialize simulation
+                if (!initSimulation()) return;
+                
+                // Hide loading, show UI
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('controls').classList.remove('hidden');
+                document.getElementById('stats').classList.remove('hidden');
+                document.getElementById('toggleControls').classList.remove('hidden');
+                
+                // Start animation loop
+                isRunning = true;
+                lastTime = performance.now();
+                fpsUpdateTime = lastTime;
+                
+                animate();
+                
+                console.log('Initialization complete!');
+            } catch (error) {
+                console.error('Initialization error:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="error">Initialization Failed</div>
+                    <div style="font-size: 14px; margin-top: 10px; color: #888;">
+                        ${error.message}
+                    </div>
+                `;
+            }
         }
     </script>
 </body>

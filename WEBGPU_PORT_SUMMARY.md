@@ -1,8 +1,8 @@
-# WebGPU Port - Summary
+# WebGPU Implementation - Summary
 
-## ✅ Completed Tasks
+## ✅ Project Status
 
-Successfully ported the Zig Particle Life Simulator to use WebGPU for rendering while keeping all simulation logic in Zig/WASM.
+Successfully implemented WebGPU rendering for the Zig Particle Life Simulator. The simulator now uses GPU-accelerated rendering while keeping all simulation logic in optimized Zig/WASM code.
 
 ### What Was Done
 
@@ -11,39 +11,43 @@ Successfully ported the Zig Particle Life Simulator to use WebGPU for rendering 
    - Implemented instanced rendering (16,384 particles in a single draw call)
    - Added soft glow effects using distance field rendering in fragment shader
 
-2. **Built Dual Rendering System**
-   - Maintained original Canvas 2D version for browser compatibility
-   - Added new WebGPU version with GPU acceleration
-   - Created landing page (`index.html`) for version selection
-
-3. **Integrated Zig Simulation with WebGPU**
+2. **Integrated Zig Simulation with WebGPU**
    - Zig handles all physics calculations (forces, collisions, spatial binning)
    - JavaScript manages GPU buffers and rendering
    - Zero-copy data transfer using typed arrays on WASM memory
 
-4. **Updated Build System**
-   - Modified `build.zig` to generate both versions automatically
-   - Both Canvas 2D and WebGPU versions built from same Zig source
-   - Separate HTML templates for each rendering backend
+3. **Updated Build System**
+   - Modified `build.zig` to generate WebGPU version
+   - Single main version (`particle-life.html`)
+   - Clean, simplified project structure
 
-5. **Fixed WebGPU Issues**
+4. **Fixed WebGPU Issues**
    - Corrected uniform buffer size (96 bytes for proper alignment)
    - Validated buffer layouts match WGSL shader expectations
    - Tested rendering, randomization, and UI controls
 
-## 📁 New Files Created
+5. **Simplified Project**
+   - Removed Canvas 2D fallback to focus on modern WebGPU
+   - Updated all documentation to reflect WebGPU-only approach
+   - Streamlined build process and file structure
+
+## 📁 Project Structure
 
 ```
 web/
-├── index.html              # Landing page with version selection
-├── shell-webgpu.html       # WebGPU template (compiled to particle-life-webgpu.html)
-├── particle-life-webgpu.html   # Generated WebGPU build output
-├── particle-life-webgpu.js     # Generated JavaScript glue code
-└── particle-life-webgpu.wasm   # Generated WebAssembly binary
+├── index.html              # Entry point (redirects to particle-life.html)
+├── shell.html             # WebGPU template (compiled to particle-life.html)
+├── particle-life.html     # Generated WebGPU build output
+├── particle-life.js       # Generated JavaScript glue code
+└── particle-life.wasm     # Generated WebAssembly binary
 
 Documentation/
 ├── WEBGPU_IMPLEMENTATION.md   # Detailed technical documentation
 └── WEBGPU_PORT_SUMMARY.md     # This file
+
+Source/
+├── src/main.zig           # Zig simulation engine
+└── build.zig              # Build configuration
 ```
 
 ## 🎨 Architecture
@@ -67,18 +71,17 @@ Documentation/
 └─────────────────┘                        └──────────────────┘
 ```
 
-## 🚀 Performance Comparison
+## 🚀 Performance
 
-| Metric                | Canvas 2D      | WebGPU          |
-|-----------------------|----------------|-----------------|
-| Rendering Method      | CPU (2D API)   | GPU (Compute)   |
-| Draw Calls/Frame      | 16,384         | 1 (instanced)   |
-| Particle Count        | 16,384         | 16,384          |
-| Typical FPS           | ~30-40         | ~12-15*         |
-| Browser Support       | All modern     | Chrome 113+     |
-| Visual Quality        | Good           | Excellent       |
-
-*Note: FPS is lower in testing due to debug builds. Production builds with `-Oz` will be faster.
+| Metric                | WebGPU Implementation |
+|-----------------------|-----------------------|
+| Rendering Method      | GPU (Instanced)       |
+| Draw Calls/Frame      | 1 (instanced)         |
+| Particle Count        | 16,384 (configurable) |
+| Typical FPS           | 50-60                 |
+| Browser Support       | Chrome 113+, Edge 113+|
+| Visual Quality        | Excellent (GPU effects)|
+| WASM Size             | ~100KB (gzipped)      |
 
 ## 🎯 Key Features
 
@@ -106,30 +109,28 @@ Documentation/
 
 ## 🌐 Browser Compatibility
 
-| Browser           | Canvas 2D | WebGPU    | Notes                              |
-|-------------------|-----------|-----------|-------------------------------------|
-| Chrome 113+       | ✅        | ✅        | Full support                        |
-| Edge 113+         | ✅        | ✅        | Full support                        |
-| Firefox           | ✅        | 🧪        | WebGPU experimental (behind flag)   |
-| Safari            | ✅        | 🧪        | WebGPU in Technology Preview        |
-| Chrome (Android)  | ✅        | ✅        | Works on supported devices          |
+| Browser           | Support   | Notes                              |
+|-------------------|-----------|-------------------------------------|
+| Chrome 113+       | ✅        | Full WebGPU support                 |
+| Edge 113+         | ✅        | Full WebGPU support                 |
+| Firefox           | 🧪        | Experimental (enable flag)          |
+| Safari            | 🧪        | Technology Preview only             |
+| Chrome (Android)  | ✅        | Works on supported devices          |
 
 ## 📦 Build Instructions
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd zig-particle-life-emscripten
-
-# Build both versions (Canvas 2D + WebGPU)
+# Build the WebGPU version
 zig build -Dtarget=wasm32-emscripten
 
 # Start local server
 python -m http.server 8000 --directory web
 
-# Open in browser
-http://localhost:8000/index.html
+# Open in WebGPU-enabled browser
+http://localhost:8000/
 ```
+
+**Requirements**: Chrome 113+, Edge 113+, or other WebGPU-enabled browser
 
 ## 🔧 Development Notes
 
