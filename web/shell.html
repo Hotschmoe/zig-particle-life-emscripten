@@ -38,6 +38,7 @@
             z-index: 1000;
             max-height: 90vh;
             overflow-y: auto;
+            transition: opacity 0.3s ease;
         }
         
         h1 {
@@ -62,6 +63,10 @@
             margin-bottom: 4px;
         }
         
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
         button {
             width: 100%;
             padding: 10px;
@@ -84,6 +89,12 @@
             background: #3d8b40;
         }
         
+        .button-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
         .value-display {
             display: inline-block;
             color: #4CAF50;
@@ -103,6 +114,7 @@
             font-size: 12px;
             font-family: 'Courier New', monospace;
             z-index: 1000;
+            transition: opacity 0.3s ease;
         }
         
         .stat-row {
@@ -126,6 +138,7 @@
             font-size: 24px;
             color: #4CAF50;
             text-align: center;
+            z-index: 2000;
         }
         
         .hidden {
@@ -147,6 +160,34 @@
         .error {
             color: #ff5555;
         }
+        
+        .info {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #555;
+            font-size: 11px;
+            color: #888;
+        }
+        
+        .copyright {
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            color: #666;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 999;
+        }
+        
+        .copyright a {
+            color: #666;
+            text-decoration: none;
+        }
+        
+        .copyright a:hover {
+            color: #4CAF50;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -157,39 +198,76 @@
         <div style="font-size: 14px; margin-top: 10px; color: #888;">Please wait</div>
     </div>
     
-    <button id="toggleControls" class="hidden">⚙️ Toggle Controls</button>
+    <button id="toggleControls" class="hidden">⚙️ Toggle Controls [S]</button>
     
     <div id="controls" class="hidden">
         <h1>🌌 Particle Life Simulator</h1>
         
         <div class="control-group">
             <label>Particles: <span class="value-display" id="particleCountValue">16384</span></label>
-            <input type="range" id="particleCount" min="10" max="16" value="14" step="1">
+            <input type="range" id="particleCount" min="10" max="16" value="14" step="1" class="slider">
         </div>
         
         <div class="control-group">
             <label>Species: <span class="value-display" id="speciesCountValue">6</span></label>
-            <input type="range" id="speciesCount" min="2" max="12" value="6" step="1">
+            <input type="range" id="speciesCount" min="1" max="20" value="6" step="1" class="slider">
+        </div>
+        
+        <div class="control-group">
+            <label>Width: <span class="value-display" id="widthValue">1024</span></label>
+            <input type="range" id="simulationWidth" min="1" max="50" value="16" step="1" class="slider">
+        </div>
+        
+        <div class="control-group">
+            <label>Height: <span class="value-display" id="heightValue">576</span></label>
+            <input type="range" id="simulationHeight" min="1" max="50" value="9" step="1" class="slider">
         </div>
         
         <div class="control-group">
             <label>Friction: <span class="value-display" id="frictionValue">10.0</span></label>
-            <input type="range" id="friction" min="0" max="50" value="10" step="0.5">
+            <input type="range" id="friction" min="0" max="100" value="10" step="1" class="slider">
         </div>
         
         <div class="control-group">
             <label>Central Force: <span class="value-display" id="centralForceValue">0.0</span></label>
-            <input type="range" id="centralForce" min="0" max="10" value="0" step="0.1">
+            <input type="range" id="centralForce" min="0" max="100" value="0" step="1" class="slider">
         </div>
         
-        <button id="restart">🔄 Restart</button>
-        <button id="randomize">🎲 Randomize</button>
-        <button id="togglePause">⏸️ Pause</button>
+        <div class="control-group">
+            <label><input type="checkbox" id="symmetricForces">Symmetric Forces</label>
+        </div>
         
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #555; font-size: 11px; color: #888;">
+        <div class="control-group">
+            <label><input type="checkbox" id="loopingBorders">Looping Borders</label>
+        </div>
+        
+        <div class="button-row">
+            <button id="togglePause">⏸️ Pause</button>
+            <button id="centerView">📍 Center</button>
+        </div>
+        
+        <div class="button-row">
+            <button id="restart">🔄 Restart</button>
+            <button id="randomize">🎲 Randomize</button>
+        </div>
+        
+        <div class="button-row">
+            <button id="saveSystem">💾 Save</button>
+            <button id="loadSystem">📂 Load</button>
+        </div>
+        
+        <div class="button-row">
+            <button id="copyUrl">🔗 Copy URL</button>
+            <button id="fullscreen">⛶ Fullscreen</button>
+        </div>
+        
+        <div class="info">
             <div>🖱️ <strong>Left Click + Drag:</strong> Push particles</div>
+            <div>🖱️ <strong>Right Click + Drag:</strong> Pan camera</div>
             <div>🔍 <strong>Mouse Wheel:</strong> Zoom in/out</div>
+            <div>⌨️ <strong>Space:</strong> Pause/Resume</div>
             <div>⌨️ <strong>S:</strong> Toggle controls</div>
+            <div>⌨️ <strong>C:</strong> Center view</div>
         </div>
     </div>
     
@@ -208,9 +286,11 @@
         </div>
         <div class="stat-row">
             <span class="stat-label">Renderer:</span>
-            <span class="stat-value">WebGPU</span>
+            <span class="stat-value">Zig+WebGPU</span>
         </div>
     </div>
+    
+    <div class="copyright">Zig+WASM port | Original by <a href="https://lisyarus.github.io/blog" target="_blank">@lisyarus</a></div>
     
     {{{ SCRIPT }}}
     
@@ -230,31 +310,53 @@
         
         // Canvas and WebGPU state
         const canvas = document.getElementById('canvas');
-        let device, context, format;
+        let device, context, surfaceFormat;
         let particleBuffer, speciesBuffer, uniformBuffer;
-        let renderPipeline, renderBindGroup;
+        let renderPipeline, renderGlowPipeline, renderPointPipeline, composePipeline;
+        let renderBindGroup, composeBindGroup;
+        let hdrTexture, hdrTextureView;
+        let blueNoiseTexture, blueNoiseTextureView;
         
         // Simulation state
         let isRunning = false;
         let isPaused = false;
         let particleCount = 16384;
         let speciesCount = 6;
+        let simulationWidth = 1024;
+        let simulationHeight = 576;
+        let friction = 10.0;
+        let centralForce = 0.0;
+        let symmetricForces = false;
+        let loopingBorders = false;
+        let currentSeed = Math.floor(Math.random() * 0xFFFFFFFF);
+        
+        // Timing
         let lastTime = performance.now();
         let frameCount = 0;
         let fpsUpdateTime = 0;
+        
+        // UI state
         let controlsVisible = true;
         
         // Camera
         let cameraX = 0;
         let cameraY = 0;
-        let cameraZoom = 1.0;
+        let cameraExtentX = 512;
+        let cameraExtentY = 288;
+        let cameraExtentXTarget = 512;
+        let zoomAnchor = null;
         
         // Mouse interaction
         let mouseX = 0;
         let mouseY = 0;
         let mouseDown = false;
+        let mouseRightDown = false;
         let lastMouseX = 0;
         let lastMouseY = 0;
+        let mouseDragX = 0;
+        let mouseDragY = 0;
+        let actionPoint = null;
+        let actionDrag = [0, 0];
         
         // WASM Functions
         let initParticleSystem;
@@ -263,6 +365,8 @@
         let getParticleCount;
         let getParticleData;
         let getSpeciesData;
+        let getForcesData;
+        let getSpeciesCount;
         let setSimulationBounds;
         let setFriction;
         let setCentralForce;
@@ -271,7 +375,7 @@
         let clearActionPoint;
         
         // WebGPU Shaders
-        const particleVertexShader = `
+        const particleGlowShader = `
 struct Particle {
     x: f32,
     y: f32,
@@ -285,12 +389,15 @@ struct Species {
     g: f32,
     b: f32,
     a: f32,
+    spawn_weight: f32,
 }
 
 struct Uniforms {
-    viewProjection: mat4x4<f32>,
+    center: vec2<f32>,
+    extent: vec2<f32>,
     particleSize: f32,
-    padding: vec3<f32>,
+    pixelsPerUnit: f32,
+    padding: vec2<f32>,
 }
 
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
@@ -300,11 +407,11 @@ struct Uniforms {
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
-    @location(1) uv: vec2<f32>,
+    @location(1) offset: vec2<f32>,
 }
 
 @vertex
-fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
+fn vertexGlow(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
     // Quad vertices (two triangles)
     var positions = array<vec2<f32>, 6>(
         vec2<f32>(-1.0, -1.0),
@@ -315,36 +422,164 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
         vec2<f32>(1.0, 1.0)
     );
     
-    let quadPos = positions[vertexIndex];
+    let offset = positions[vertexIndex];
     let particle = particles[instanceIndex];
     let speciesData = species[particle.species];
     
-    // Calculate world position
+    // Calculate world position with large glow
     let worldPos = vec2<f32>(particle.x, particle.y);
-    let offset = quadPos * uniforms.particleSize;
-    let finalPos = worldPos + offset;
+    let glowSize = 12.0;
+    let glowOffset = offset * glowSize;
+    let finalPos = worldPos + glowOffset;
+    
+    // Transform to clip space
+    let clipPos = (finalPos - uniforms.center) / uniforms.extent;
     
     var output: VertexOutput;
-    output.position = uniforms.viewProjection * vec4<f32>(finalPos, 0.0, 1.0);
+    output.position = vec4<f32>(clipPos, 0.0, 1.0);
     output.color = vec4<f32>(speciesData.r, speciesData.g, speciesData.b, speciesData.a);
-    output.uv = quadPos;
+    output.offset = offset;
     
     return output;
 }
 
 @fragment
+fn fragmentGlow(input: VertexOutput) -> @location(0) vec4<f32> {
+    let l = length(input.offset);
+    let alpha = exp(-6.0 * l * l) / 64.0;
+    return input.color * vec4<f32>(1.0, 1.0, 1.0, alpha);
+}
+
+@vertex
+fn vertexCircle(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
+    var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    
+    let offset = positions[vertexIndex] * 1.5;
+    let particle = particles[instanceIndex];
+    let speciesData = species[particle.species];
+    
+    let worldPos = vec2<f32>(particle.x, particle.y);
+    let finalPos = worldPos + offset;
+    let clipPos = (finalPos - uniforms.center) / uniforms.extent;
+    
+    var output: VertexOutput;
+    output.position = vec4<f32>(clipPos, 0.0, 1.0);
+    output.color = vec4<f32>(speciesData.r, speciesData.g, speciesData.b, speciesData.a);
+    output.offset = offset;
+    
+    return output;
+}
+
+@fragment
+fn fragmentCircle(input: VertexOutput) -> @location(0) vec4<f32> {
+    let alpha = clamp(uniforms.pixelsPerUnit - length(input.offset) * uniforms.pixelsPerUnit + 0.5, 0.0, 1.0);
+    return input.color * vec4<f32>(1.0, 1.0, 1.0, alpha);
+}
+
+@vertex
+fn vertexPoint(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
+    var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    
+    let offset = positions[vertexIndex] * 2.0 / uniforms.pixelsPerUnit;
+    let particle = particles[instanceIndex];
+    let speciesData = species[particle.species];
+    
+    let worldPos = vec2<f32>(particle.x, particle.y);
+    let finalPos = worldPos + offset;
+    let clipPos = (finalPos - uniforms.center) / uniforms.extent;
+    
+    var output: VertexOutput;
+    output.position = vec4<f32>(clipPos, 0.0, 1.0);
+    output.color = vec4<f32>(speciesData.r, speciesData.g, speciesData.b, speciesData.a);
+    output.offset = offset;
+    
+    return output;
+}
+
+const PI = 3.1415926535;
+
+@fragment
+fn fragmentPoint(input: VertexOutput) -> @location(0) vec4<f32> {
+    let d = max(vec2(0.0), min(input.offset * uniforms.pixelsPerUnit + 0.5, vec2(uniforms.pixelsPerUnit)) - max(input.offset * uniforms.pixelsPerUnit - 0.5, -vec2(uniforms.pixelsPerUnit)));
+    let alpha = (PI / 4.0) * d.x * d.y;
+    return vec4<f32>(input.color.rgb, input.color.a * alpha);
+}
+`;
+
+        const composeShader = `
+@group(0) @binding(0) var hdrTexture: texture_2d<f32>;
+@group(0) @binding(1) var blueNoiseTexture: texture_2d<f32>;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) texcoord: vec2<f32>,
+}
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    
+    let pos = positions[vertexIndex];
+    var output: VertexOutput;
+    output.position = vec4<f32>(pos, 0.0, 1.0);
+    output.texcoord = pos * 0.5 + vec2<f32>(0.5);
+    return output;
+}
+
+fn acesTonemap(x: vec3<f32>) -> vec3<f32> {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn dither(x: vec3<f32>, n: f32) -> vec3<f32> {
+    let c = x * 255.0;
+    let c0 = floor(c);
+    let c1 = c0 + vec3<f32>(1.0);
+    let dc = c - c0;
+    
+    var r = c0;
+    if (dc.r > n) { r.r = c1.r; }
+    if (dc.g > n) { r.g = c1.g; }
+    if (dc.b > n) { r.b = c1.b; }
+    
+    return r / 255.0;
+}
+
+@fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Circular particle with soft edge
-    let dist = length(input.uv);
-    if (dist > 1.0) {
-        discard;
-    }
+    let sample = textureLoad(hdrTexture, vec2<i32>(input.position.xy), 0);
+    let noiseDims = textureDimensions(blueNoiseTexture);
+    let noiseCoord = vec2<u32>(input.position.xy) % noiseDims;
+    let noise = textureLoad(blueNoiseTexture, noiseCoord, 0).r;
     
-    // Soft glow effect
-    let alpha = smoothstep(1.0, 0.3, dist);
-    let brightness = smoothstep(1.0, 0.0, dist) * 0.5 + 0.5;
+    var color = sample.rgb;
+    color = acesTonemap(color);
+    color = pow(color, vec3<f32>(1.0 / 2.2));
+    color = dither(color, noise);
     
-    return vec4<f32>(input.color.rgb * brightness, input.color.a * alpha);
+    return vec4<f32>(color, 1.0);
 }
 `;
         
@@ -355,12 +590,39 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             canvas.width = width;
             canvas.height = height;
             
-            if (context) {
+            if (device && context) {
+                // Reconfigure context
                 context.configure({
                     device: device,
-                    format: format,
+                    format: surfaceFormat,
                     alphaMode: 'premultiplied',
                 });
+                
+                // Recreate HDR texture
+                if (hdrTexture) {
+                    hdrTexture.destroy();
+                }
+                
+                hdrTexture = device.createTexture({
+                    format: 'rgba16float',
+                    size: [width, height, 1],
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+                });
+                hdrTextureView = hdrTexture.createView();
+                
+                // Recreate compose bind group
+                composeBindGroup = device.createBindGroup({
+                    label: 'Compose Bind Group',
+                    layout: composePipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: hdrTextureView },
+                        { binding: 1, resource: blueNoiseTextureView },
+                    ],
+                });
+                
+                // Update camera aspect ratio
+                const aspectRatio = width / height;
+                cameraExtentY = cameraExtentX / aspectRatio;
             }
         }
         
@@ -381,6 +643,13 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             return true;
         }
         
+        // Load image helper
+        async function loadImage(url) {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return await createImageBitmap(blob, { colorSpaceConversion: 'none' });
+        }
+        
         // Initialize WebGPU
         async function initWebGPU() {
             const adapter = await navigator.gpu.requestAdapter();
@@ -390,47 +659,141 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             
             device = await adapter.requestDevice();
             context = canvas.getContext('webgpu');
-            format = navigator.gpu.getPreferredCanvasFormat();
+            surfaceFormat = navigator.gpu.getPreferredCanvasFormat();
             
-            resizeCanvas();
+            // Load blue noise texture
+            const blueNoiseImage = await loadImage('blue-noise.png');
+            blueNoiseTexture = device.createTexture({
+                label: 'Blue Noise Texture',
+                format: 'rgba8unorm-srgb',
+                size: [blueNoiseImage.width, blueNoiseImage.height],
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+            device.queue.copyExternalImageToTexture(
+                { source: blueNoiseImage },
+                { texture: blueNoiseTexture },
+                { width: blueNoiseImage.width, height: blueNoiseImage.height }
+            );
+            blueNoiseTextureView = blueNoiseTexture.createView();
             
-            // Create shader module
-            const shaderModule = device.createShaderModule({
+            // Create shader modules
+            const particleShaderModule = device.createShaderModule({
                 label: 'Particle Shader',
-                code: particleVertexShader,
+                code: particleGlowShader,
             });
             
-            // Create render pipeline
-            renderPipeline = device.createRenderPipeline({
-                label: 'Particle Render Pipeline',
-                layout: 'auto',
+            const composeShaderModule = device.createShaderModule({
+                label: 'Compose Shader',
+                code: composeShader,
+            });
+            
+            // Create render pipelines
+            const particlePipelineLayout = device.createPipelineLayout({
+                label: 'Particle Pipeline Layout',
+                bindGroupLayouts: [
+                    device.createBindGroupLayout({
+                        entries: [
+                            { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+                            { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+                            { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                        ],
+                    }),
+                ],
+            });
+            
+            const hdrBlendState = {
+                color: {
+                    srcFactor: 'src-alpha',
+                    dstFactor: 'one',
+                    operation: 'add',
+                },
+                alpha: {
+                    srcFactor: 'one',
+                    dstFactor: 'one',
+                    operation: 'add',
+                },
+            };
+            
+            renderGlowPipeline = device.createRenderPipeline({
+                label: 'Particle Glow Pipeline',
+                layout: particlePipelineLayout,
                 vertex: {
-                    module: shaderModule,
-                    entryPoint: 'vertexMain',
+                    module: particleShaderModule,
+                    entryPoint: 'vertexGlow',
                 },
                 fragment: {
-                    module: shaderModule,
-                    entryPoint: 'fragmentMain',
+                    module: particleShaderModule,
+                    entryPoint: 'fragmentGlow',
                     targets: [{
-                        format: format,
-                        blend: {
-                            color: {
-                                srcFactor: 'src-alpha',
-                                dstFactor: 'one',
-                                operation: 'add',
-                            },
-                            alpha: {
-                                srcFactor: 'one',
-                                dstFactor: 'one',
-                                operation: 'add',
-                            },
-                        },
+                        format: 'rgba16float',
+                        blend: hdrBlendState,
                     }],
                 },
                 primitive: {
                     topology: 'triangle-list',
                 },
             });
+            
+            renderPipeline = device.createRenderPipeline({
+                label: 'Particle Circle Pipeline',
+                layout: particlePipelineLayout,
+                vertex: {
+                    module: particleShaderModule,
+                    entryPoint: 'vertexCircle',
+                },
+                fragment: {
+                    module: particleShaderModule,
+                    entryPoint: 'fragmentCircle',
+                    targets: [{
+                        format: 'rgba16float',
+                        blend: hdrBlendState,
+                    }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                },
+            });
+            
+            renderPointPipeline = device.createRenderPipeline({
+                label: 'Particle Point Pipeline',
+                layout: particlePipelineLayout,
+                vertex: {
+                    module: particleShaderModule,
+                    entryPoint: 'vertexPoint',
+                },
+                fragment: {
+                    module: particleShaderModule,
+                    entryPoint: 'fragmentPoint',
+                    targets: [{
+                        format: 'rgba16float',
+                        blend: hdrBlendState,
+                    }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                },
+            });
+            
+            composePipeline = device.createRenderPipeline({
+                label: 'Compose Pipeline',
+                layout: 'auto',
+                vertex: {
+                    module: composeShaderModule,
+                    entryPoint: 'vertexMain',
+                },
+                fragment: {
+                    module: composeShaderModule,
+                    entryPoint: 'fragmentMain',
+                    targets: [{
+                        format: surfaceFormat,
+                    }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                },
+            });
+            
+            resizeCanvas();
             
             console.log('WebGPU initialized successfully');
         }
@@ -443,6 +806,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             getParticleCount = Module.cwrap('getParticleCount', 'number', []);
             getParticleData = Module.cwrap('getParticleData', 'number', []);
             getSpeciesData = Module.cwrap('getSpeciesData', 'number', []);
+            getForcesData = Module.cwrap('getForcesData', 'number', []);
+            getSpeciesCount = Module.cwrap('getSpeciesCount', 'number', []);
             setSimulationBounds = Module.cwrap('setSimulationBounds', null, ['number', 'number', 'number', 'number']);
             setFriction = Module.cwrap('setFriction', null, ['number']);
             setCentralForce = Module.cwrap('setCentralForce', null, ['number']);
@@ -453,26 +818,25 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         
         function createBuffers() {
             // Create particle buffer
-            const particleDataSize = particleCount * 20; // 5 floats per particle (x, y, vx, vy, species as f32)
+            const particleDataSize = particleCount * 20; // 5 floats per particle
             particleBuffer = device.createBuffer({
                 label: 'Particle Buffer',
                 size: particleDataSize,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             });
             
-            // Create species buffer
-            const speciesDataSize = speciesCount * 16; // 4 floats per species
+            // Create species buffer (now includes spawn_weight)
+            const speciesDataSize = speciesCount * 20; // 5 floats per species
             speciesBuffer = device.createBuffer({
                 label: 'Species Buffer',
                 size: speciesDataSize,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             });
             
-            // Create uniform buffer (view-projection matrix + particle size)
-            // WebGPU requires 96 bytes due to alignment rules (mat4x4 + vec4)
+            // Create uniform buffer (camera + particle size)
             uniformBuffer = device.createBuffer({
                 label: 'Uniform Buffer',
-                size: 96, // mat4x4 (64 bytes) + vec4 (16 bytes) for proper alignment
+                size: 32, // 2 vec2 + 2 floats + padding
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             });
             
@@ -489,21 +853,22 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         
         function initSimulation() {
-            const seed = Math.floor(Math.random() * 0xFFFFFFFF);
-            const success = initParticleSystem(particleCount, speciesCount, seed);
+            const success = initParticleSystem(particleCount, speciesCount, currentSeed);
             
             if (!success) {
                 console.error('Failed to initialize particle system');
                 return false;
             }
             
-            generateRandomSystem(0); // 0 = asymmetric forces
+            generateRandomSystem(symmetricForces ? 1 : 0);
             
             // Set simulation bounds
-            const aspect = canvas.width / canvas.height;
-            const height = 288;
-            const width = height * aspect;
-            setSimulationBounds(-width, width, -height, height);
+            const W = Math.round(simulationWidth / 64) * 32;
+            const H = Math.round(simulationHeight / 64) * 32;
+            setSimulationBounds(-W, W, -H, H);
+            setFriction(friction);
+            setCentralForce(centralForce);
+            setLoopingBorders(loopingBorders ? 1 : 0);
             
             // Recreate GPU buffers
             createBuffers();
@@ -515,6 +880,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         function updateUIValues() {
             document.getElementById('particleCountValue').textContent = particleCount;
             document.getElementById('speciesCountValue').textContent = speciesCount;
+            document.getElementById('widthValue').textContent = simulationWidth;
+            document.getElementById('heightValue').textContent = simulationHeight;
+            document.getElementById('frictionValue').textContent = friction.toFixed(1);
+            document.getElementById('centralForceValue').textContent = (centralForce / 10).toFixed(1);
             document.getElementById('particleCountStat').textContent = particleCount;
             document.getElementById('speciesCountStat').textContent = speciesCount;
         }
@@ -528,12 +897,12 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 particleCount * 5
             );
             
-            // Get species data from WASM memory
+            // Get species data from WASM memory (now 5 floats per species)
             const speciesDataPtr = getSpeciesData();
             const speciesDataView = new Float32Array(
                 Module.HEAPU8.buffer,
                 speciesDataPtr,
-                speciesCount * 4
+                speciesCount * 5
             );
             
             // Copy to GPU buffers
@@ -542,58 +911,84 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         
         function updateUniforms() {
-            // Create view-projection matrix
-            const aspect = canvas.width / canvas.height;
-            const height = 288;
-            const width = height * aspect;
+            const aspectRatio = canvas.width / canvas.height;
             
-            // Orthographic projection
-            const left = (-width - cameraX) * cameraZoom;
-            const right = (width - cameraX) * cameraZoom;
-            const bottom = (-height - cameraY) * cameraZoom;
-            const top = (height - cameraY) * cameraZoom;
-            const near = -1;
-            const far = 1;
+            // Smooth camera zoom
+            const dt = (performance.now() - lastTime) / 1000;
+            const cameraExtentXDelta = (cameraExtentXTarget - cameraExtentX) * (1 - Math.exp(-20 * dt));
+            cameraExtentX += cameraExtentXDelta;
+            cameraExtentY = cameraExtentX / aspectRatio;
             
-            const matrix = new Float32Array(16);
-            matrix[0] = 2 / (right - left);
-            matrix[5] = 2 / (top - bottom);
-            matrix[10] = -2 / (far - near);
-            matrix[12] = -(right + left) / (right - left);
-            matrix[13] = -(top + bottom) / (top - bottom);
-            matrix[14] = -(far + near) / (far - near);
-            matrix[15] = 1;
+            // Apply zoom anchor
+            if (zoomAnchor) {
+                cameraX -= cameraExtentXDelta * zoomAnchor[0];
+                cameraY -= cameraExtentXDelta * zoomAnchor[1] / aspectRatio;
+            }
             
-            // Particle size in world units
-            const particleSize = 3.0 * cameraZoom;
+            const pixelsPerUnit = canvas.width / (2.0 * cameraExtentX);
             
-            // Create uniform data (96 bytes = 24 floats)
-            const uniformData = new Float32Array(24); // 16 for matrix + 4 for vec4 (size+padding)
-            uniformData.set(matrix, 0);
-            uniformData[16] = particleSize;
-            // uniformData[17-23] remain 0 (padding)
+            // Update uniform data
+            const uniformData = new Float32Array(8);
+            uniformData[0] = cameraX;
+            uniformData[1] = cameraY;
+            uniformData[2] = cameraExtentX;
+            uniformData[3] = cameraExtentY;
+            uniformData[4] = 3.0; // particle size
+            uniformData[5] = pixelsPerUnit;
+            // uniformData[6-7] padding
             
             device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+            
+            return pixelsPerUnit;
         }
         
         function render() {
-            const encoder = device.createCommandEncoder({ label: 'Render Encoder' });
-            const textureView = context.getCurrentTexture().createView();
+            const pixelsPerUnit = updateUniforms();
             
-            const renderPass = encoder.beginRenderPass({
-                label: 'Particle Render Pass',
+            const encoder = device.createCommandEncoder({ label: 'Render Encoder' });
+            
+            // HDR render pass
+            const hdrRenderPass = encoder.beginRenderPass({
+                label: 'HDR Particle Render Pass',
                 colorAttachments: [{
-                    view: textureView,
+                    view: hdrTextureView,
+                    loadOp: 'clear',
+                    clearValue: { r: 0.001, g: 0.001, b: 0.001, a: 0.0 },
+                    storeOp: 'store',
+                }],
+            });
+            
+            hdrRenderPass.setBindGroup(0, renderBindGroup);
+            
+            // Render glow
+            hdrRenderPass.setPipeline(renderGlowPipeline);
+            hdrRenderPass.draw(6, particleCount);
+            
+            // Render particles (adaptive based on zoom)
+            if (pixelsPerUnit < 1.0) {
+                hdrRenderPass.setPipeline(renderPointPipeline);
+            } else {
+                hdrRenderPass.setPipeline(renderPipeline);
+            }
+            hdrRenderPass.draw(6, particleCount);
+            
+            hdrRenderPass.end();
+            
+            // Compose pass (tonemapping + dithering)
+            const composeRenderPass = encoder.beginRenderPass({
+                label: 'Compose Render Pass',
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
                     loadOp: 'clear',
                     clearValue: { r: 0, g: 0, b: 0, a: 1 },
                     storeOp: 'store',
                 }],
             });
             
-            renderPass.setPipeline(renderPipeline);
-            renderPass.setBindGroup(0, renderBindGroup);
-            renderPass.draw(6, particleCount); // 6 vertices per particle (2 triangles)
-            renderPass.end();
+            composeRenderPass.setPipeline(composePipeline);
+            composeRenderPass.setBindGroup(0, composeBindGroup);
+            composeRenderPass.draw(3);
+            composeRenderPass.end();
             
             device.queue.submit([encoder.finish()]);
         }
@@ -616,24 +1011,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             // Run simulation step
             if (!isPaused) {
                 // Set mouse interaction
-                if (mouseDown) {
-                    const dx = mouseX - lastMouseX;
-                    const dy = mouseY - lastMouseY;
-                    
-                    // Convert screen to world coordinates
+                if (actionPoint) {
                     const aspect = canvas.width / canvas.height;
-                    const height = 288;
-                    const width = height * aspect;
                     const centerX = canvas.width / 2;
                     const centerY = canvas.height / 2;
-                    const scale = Math.min(canvas.width, canvas.height) / 600 * cameraZoom;
                     
-                    const worldX = cameraX + (mouseX - centerX) / scale;
-                    const worldY = cameraY - (mouseY - centerY) / scale;
-                    const worldDx = dx / scale;
-                    const worldDy = -dy / scale;
+                    const worldX = cameraX + (actionPoint[0] - centerX) / canvas.width * 2 * cameraExtentX;
+                    const worldY = cameraY - (actionPoint[1] - centerY) / canvas.height * 2 * cameraExtentY;
+                    const worldDx = actionDrag[0] / canvas.width * 2 * cameraExtentX;
+                    const worldDy = -actionDrag[1] / canvas.height * 2 * cameraExtentY;
                     
-                    setActionPoint(worldX, worldY, worldDx * 50, worldDy * 50, 20.0, 50.0);
+                    setActionPoint(worldX, worldY, worldDx * 50, worldDy * 50, 20.0, cameraExtentX / 16);
+                    actionDrag = [0, 0];
                 } else {
                     clearActionPoint();
                 }
@@ -642,18 +1031,33 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 updateGPUBuffers();
             }
             
-            // Update camera and render
-            updateUniforms();
+            // Render
             render();
             
             requestAnimationFrame(animate);
         }
         
+        function centerView() {
+            cameraX = 0;
+            cameraY = 0;
+            zoomAnchor = null;
+            
+            const W = Math.round(simulationWidth / 64) * 32;
+            const H = Math.round(simulationHeight / 64) * 32;
+            const aspectRatio = canvas.width / canvas.height;
+            
+            if ((2 * W) / (2 * H) > aspectRatio) {
+                cameraExtentXTarget = W;
+            } else {
+                cameraExtentXTarget = H * aspectRatio;
+            }
+        }
+        
         // Event handlers
         function setupEventHandlers() {
+            // Sliders
             document.getElementById('particleCount').addEventListener('input', (e) => {
-                const value = parseInt(e.target.value);
-                particleCount = Math.pow(2, value);
+                particleCount = Math.pow(2, parseInt(e.target.value));
                 document.getElementById('particleCountValue').textContent = particleCount;
             });
             
@@ -662,23 +1066,45 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 document.getElementById('speciesCountValue').textContent = speciesCount;
             });
             
+            document.getElementById('simulationWidth').addEventListener('input', (e) => {
+                simulationWidth = parseInt(e.target.value) * 64;
+                document.getElementById('widthValue').textContent = simulationWidth;
+            });
+            
+            document.getElementById('simulationHeight').addEventListener('input', (e) => {
+                simulationHeight = parseInt(e.target.value) * 64;
+                document.getElementById('heightValue').textContent = simulationHeight;
+            });
+            
             document.getElementById('friction').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                setFriction(value);
-                document.getElementById('frictionValue').textContent = value.toFixed(1);
+                friction = parseFloat(e.target.value);
+                setFriction(friction);
+                document.getElementById('frictionValue').textContent = friction.toFixed(1);
             });
             
             document.getElementById('centralForce').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                setCentralForce(value);
-                document.getElementById('centralForceValue').textContent = value.toFixed(1);
+                centralForce = parseFloat(e.target.value);
+                setCentralForce(centralForce / 10);
+                document.getElementById('centralForceValue').textContent = (centralForce / 10).toFixed(1);
             });
             
+            // Checkboxes
+            document.getElementById('symmetricForces').addEventListener('change', (e) => {
+                symmetricForces = e.target.checked;
+            });
+            
+            document.getElementById('loopingBorders').addEventListener('change', (e) => {
+                loopingBorders = e.target.checked;
+                setLoopingBorders(loopingBorders ? 1 : 0);
+            });
+            
+            // Buttons
             document.getElementById('restart').addEventListener('click', () => {
                 initSimulation();
             });
             
             document.getElementById('randomize').addEventListener('click', () => {
+                currentSeed = Math.floor(Math.random() * 0xFFFFFFFF);
                 initSimulation();
             });
             
@@ -687,43 +1113,227 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 e.target.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
             });
             
+            document.getElementById('centerView').addEventListener('click', () => {
+                centerView();
+            });
+            
             document.getElementById('toggleControls').addEventListener('click', () => {
                 controlsVisible = !controlsVisible;
                 document.getElementById('controls').style.display = controlsVisible ? 'block' : 'none';
+                document.getElementById('stats').style.display = controlsVisible ? 'block' : 'none';
+            });
+            
+            document.getElementById('saveSystem').addEventListener('click', async () => {
+                try {
+                    const systemData = {
+                        particleCount,
+                        speciesCount,
+                        simulationSize: [simulationWidth, simulationHeight],
+                        friction,
+                        centralForce: centralForce / 10,
+                        symmetricForces,
+                        loopingBorders,
+                        seed: currentSeed,
+                        species: [],
+                    };
+                    
+                    // Get species data
+                    const speciesDataPtr = getSpeciesData();
+                    const speciesDataView = new Float32Array(
+                        Module.HEAPU8.buffer,
+                        speciesDataPtr,
+                        speciesCount * 5
+                    );
+                    
+                    // Get forces data
+                    const forcesDataPtr = getForcesData();
+                    const forcesDataView = new Float32Array(
+                        Module.HEAPU8.buffer,
+                        forcesDataPtr,
+                        speciesCount * speciesCount * 4
+                    );
+                    
+                    for (let i = 0; i < speciesCount; i++) {
+                        const species = {
+                            color: [
+                                speciesDataView[i * 5 + 0],
+                                speciesDataView[i * 5 + 1],
+                                speciesDataView[i * 5 + 2],
+                                speciesDataView[i * 5 + 3],
+                            ],
+                            spawnWeight: speciesDataView[i * 5 + 4],
+                            forces: [],
+                        };
+                        
+                        for (let j = 0; j < speciesCount; j++) {
+                            const idx = (i * speciesCount + j) * 4;
+                            species.forces.push({
+                                strength: forcesDataView[idx + 0],
+                                radius: forcesDataView[idx + 1],
+                                collisionStrength: forcesDataView[idx + 2],
+                                collisionRadius: forcesDataView[idx + 3],
+                            });
+                        }
+                        
+                        systemData.species.push(species);
+                    }
+                    
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'particle-life-system.json',
+                        types: [{
+                            description: 'JSON file',
+                            accept: { 'application/json': ['.json'] },
+                        }],
+                    });
+                    
+                    const writable = await handle.createWritable();
+                    await writable.write(JSON.stringify(systemData, null, 2));
+                    await writable.close();
+                    
+                    console.log('System saved successfully');
+                } catch (error) {
+                    console.error('Failed to save system:', error);
+                }
+            });
+            
+            document.getElementById('loadSystem').addEventListener('click', async () => {
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{
+                            description: 'JSON file',
+                            accept: { 'application/json': ['.json'] },
+                        }],
+                    });
+                    
+                    const file = await handle.getFile();
+                    const data = await file.text();
+                    const systemData = JSON.parse(data);
+                    
+                    // Apply loaded settings
+                    particleCount = systemData.particleCount;
+                    speciesCount = systemData.species.length;
+                    simulationWidth = systemData.simulationSize[0];
+                    simulationHeight = systemData.simulationSize[1];
+                    friction = systemData.friction;
+                    centralForce = systemData.centralForce * 10;
+                    symmetricForces = systemData.symmetricForces || false;
+                    loopingBorders = systemData.loopingBorders || false;
+                    currentSeed = systemData.seed;
+                    
+                    document.getElementById('particleCount').value = Math.log2(particleCount);
+                    document.getElementById('speciesCount').value = speciesCount;
+                    document.getElementById('simulationWidth').value = simulationWidth / 64;
+                    document.getElementById('simulationHeight').value = simulationHeight / 64;
+                    document.getElementById('friction').value = friction;
+                    document.getElementById('centralForce').value = centralForce;
+                    document.getElementById('symmetricForces').checked = symmetricForces;
+                    document.getElementById('loopingBorders').checked = loopingBorders;
+                    
+                    initSimulation();
+                    centerView();
+                    
+                    console.log('System loaded successfully');
+                } catch (error) {
+                    console.error('Failed to load system:', error);
+                }
+            });
+            
+            document.getElementById('copyUrl').addEventListener('click', async () => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('particleCount', particleCount);
+                url.searchParams.set('speciesCount', speciesCount);
+                url.searchParams.set('width', simulationWidth);
+                url.searchParams.set('height', simulationHeight);
+                url.searchParams.set('friction', friction);
+                url.searchParams.set('centralForce', centralForce / 10);
+                url.searchParams.set('symmetricForces', symmetricForces);
+                url.searchParams.set('loopingBorders', loopingBorders);
+                url.searchParams.set('seed', currentSeed);
+                
+                try {
+                    await navigator.clipboard.writeText(url.toString());
+                    console.log('URL copied to clipboard');
+                } catch (error) {
+                    console.error('Failed to copy URL:', error);
+                }
+            });
+            
+            document.getElementById('fullscreen').addEventListener('click', async () => {
+                try {
+                    if (document.fullscreenElement) {
+                        await document.exitFullscreen();
+                        document.getElementById('fullscreen').textContent = '⛶ Fullscreen';
+                    } else {
+                        await document.body.requestFullscreen();
+                        document.getElementById('fullscreen').textContent = '⛶ Exit Fullscreen';
+                    }
+                } catch (error) {
+                    console.error('Fullscreen error:', error);
+                }
             });
             
             // Mouse events
             canvas.addEventListener('mousedown', (e) => {
-                mouseDown = true;
-                mouseX = e.clientX;
-                mouseY = e.clientY;
-                lastMouseX = mouseX;
-                lastMouseY = mouseY;
+                if (e.button === 0) {
+                    actionPoint = [e.clientX, e.clientY];
+                    actionDrag = [0, 0];
+                } else if (e.button === 2) {
+                    mouseRightDown = true;
+                    mouseDragX = e.clientX;
+                    mouseDragY = e.clientY;
+                }
+                e.preventDefault();
             });
             
             canvas.addEventListener('mousemove', (e) => {
-                if (mouseDown) {
-                    lastMouseX = mouseX;
-                    lastMouseY = mouseY;
+                if (actionPoint) {
+                    actionDrag[0] = e.clientX - actionPoint[0];
+                    actionDrag[1] = e.clientY - actionPoint[1];
+                    actionPoint = [e.clientX, e.clientY];
                 }
-                mouseX = e.clientX;
-                mouseY = e.clientY;
+                
+                if (mouseRightDown) {
+                    const dx = e.clientX - mouseDragX;
+                    const dy = e.clientY - mouseDragY;
+                    
+                    cameraX -= dx / canvas.width * 2 * cameraExtentX;
+                    cameraY += dy / canvas.height * 2 * cameraExtentY;
+                    
+                    mouseDragX = e.clientX;
+                    mouseDragY = e.clientY;
+                }
             });
             
-            canvas.addEventListener('mouseup', () => {
-                mouseDown = false;
+            canvas.addEventListener('mouseup', (e) => {
+                if (e.button === 0) {
+                    actionPoint = null;
+                    actionDrag = [0, 0];
+                } else if (e.button === 2) {
+                    mouseRightDown = false;
+                }
             });
             
             canvas.addEventListener('mouseleave', () => {
-                mouseDown = false;
+                actionPoint = null;
+                actionDrag = [0, 0];
+                mouseRightDown = false;
+            });
+            
+            canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
             });
             
             // Wheel zoom
             canvas.addEventListener('wheel', (e) => {
                 e.preventDefault();
-                const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
-                cameraZoom *= zoomFactor;
-                cameraZoom = Math.max(0.1, Math.min(5, cameraZoom));
+                const factor = Math.pow(1.25, e.deltaY / 120);
+                cameraExtentXTarget *= factor;
+                cameraExtentXTarget = Math.max(10, Math.min(10000, cameraExtentXTarget));
+                
+                zoomAnchor = [
+                    2.0 * e.clientX / canvas.width - 1.0,
+                    1.0 - 2.0 * e.clientY / canvas.height,
+                ];
             });
             
             // Keyboard
@@ -731,12 +1341,71 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 if (e.key === 's' || e.key === 'S') {
                     controlsVisible = !controlsVisible;
                     document.getElementById('controls').style.display = controlsVisible ? 'block' : 'none';
+                    document.getElementById('stats').style.display = controlsVisible ? 'block' : 'none';
+                    e.preventDefault();
                 }
                 if (e.key === ' ') {
-                    e.preventDefault();
                     document.getElementById('togglePause').click();
+                    e.preventDefault();
+                }
+                if (e.key === 'c' || e.key === 'C') {
+                    centerView();
+                    e.preventDefault();
                 }
             });
+            
+            // Slider wheel scroll
+            const sliders = document.querySelectorAll('.slider');
+            sliders.forEach(slider => {
+                slider.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const step = parseFloat(slider.step) || 1;
+                    const delta = -e.deltaY / 120;
+                    slider.value = parseFloat(slider.value) + delta * step;
+                    slider.dispatchEvent(new Event('input'));
+                });
+            });
+        }
+        
+        // Load URL parameters
+        function loadURLParameters() {
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.has('particleCount')) {
+                particleCount = parseInt(params.get('particleCount'));
+                document.getElementById('particleCount').value = Math.log2(particleCount);
+            }
+            if (params.has('speciesCount')) {
+                speciesCount = parseInt(params.get('speciesCount'));
+                document.getElementById('speciesCount').value = speciesCount;
+            }
+            if (params.has('width')) {
+                simulationWidth = parseInt(params.get('width'));
+                document.getElementById('simulationWidth').value = simulationWidth / 64;
+            }
+            if (params.has('height')) {
+                simulationHeight = parseInt(params.get('height'));
+                document.getElementById('simulationHeight').value = simulationHeight / 64;
+            }
+            if (params.has('friction')) {
+                friction = parseFloat(params.get('friction'));
+                document.getElementById('friction').value = friction;
+            }
+            if (params.has('centralForce')) {
+                centralForce = parseFloat(params.get('centralForce')) * 10;
+                document.getElementById('centralForce').value = centralForce;
+            }
+            if (params.has('symmetricForces')) {
+                symmetricForces = params.get('symmetricForces') === 'true';
+                document.getElementById('symmetricForces').checked = symmetricForces;
+            }
+            if (params.has('loopingBorders')) {
+                loopingBorders = params.get('loopingBorders') === 'true';
+                document.getElementById('loopingBorders').checked = loopingBorders;
+            }
+            if (params.has('seed')) {
+                currentSeed = parseInt(params.get('seed'));
+            }
         }
         
         // Main initialization
@@ -754,10 +1423,17 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 
                 // Initialize WASM
                 initWASM();
+                
+                // Load URL parameters
+                loadURLParameters();
+                
+                // Setup event handlers
                 setupEventHandlers();
                 
                 // Initialize simulation
                 if (!initSimulation()) return;
+                
+                centerView();
                 
                 // Hide loading, show UI
                 document.getElementById('loading').classList.add('hidden');
@@ -786,4 +1462,3 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     </script>
 </body>
 </html>
-
