@@ -626,12 +626,9 @@ export fn setSimulationBounds(left: f32, right: f32, bottom: f32, top: f32) void
     sim_options.bottom = bottom;
     sim_options.top = top;
 
-    // Recalculate grid dimensions
-    const width = sim_options.right - sim_options.left;
-    const height = sim_options.top - sim_options.bottom;
-    grid_width = @intFromFloat(ceil(width / sim_options.bin_size));
-    grid_height = @intFromFloat(ceil(height / sim_options.bin_size));
-    bin_count = grid_width * grid_height;
+    // NOTE: Grid dimensions should NOT be recalculated here!
+    // The grid is allocated at initialization and cannot be resized.
+    // If you need different bounds, call initParticleSystem again.
 }
 
 export fn setFriction(friction: f32) void {

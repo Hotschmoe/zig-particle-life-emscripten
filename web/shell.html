@@ -285,6 +285,10 @@
             <span class="stat-value" id="speciesCountStat">6</span>
         </div>
         <div class="stat-row">
+            <span class="stat-label">Seed:</span>
+            <span class="stat-value" id="seedStat">0</span>
+        </div>
+        <div class="stat-row">
             <span class="stat-label">Renderer:</span>
             <span class="stat-value">Zig+WebGPU</span>
         </div>
@@ -886,6 +890,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             document.getElementById('centralForceValue').textContent = (centralForce / 10).toFixed(1);
             document.getElementById('particleCountStat').textContent = particleCount;
             document.getElementById('speciesCountStat').textContent = speciesCount;
+            document.getElementById('seedStat').textContent = currentSeed;
         }
         
         function updateGPUBuffers() {
@@ -913,9 +918,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         function updateUniforms() {
             const aspectRatio = canvas.width / canvas.height;
             
-            // Smooth camera zoom
-            const dt = (performance.now() - lastTime) / 1000;
-            const cameraExtentXDelta = (cameraExtentXTarget - cameraExtentX) * (1 - Math.exp(-20 * dt));
+            // Smooth camera zoom (using -Math.expm1 like reference)
+            const currentTime = performance.now();
+            const dt = (currentTime - lastTime) / 1000;
+            const cameraExtentXDelta = (cameraExtentXTarget - cameraExtentX) * (-Math.expm1(-20 * dt));
             cameraExtentX += cameraExtentXDelta;
             cameraExtentY = cameraExtentX / aspectRatio;
             
@@ -1021,7 +1027,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                     const worldDx = actionDrag[0] / canvas.width * 2 * cameraExtentX;
                     const worldDy = -actionDrag[1] / canvas.height * 2 * cameraExtentY;
                     
-                    setActionPoint(worldX, worldY, worldDx * 50, worldDy * 50, 20.0, cameraExtentX / 16);
+                    // Match reference implementation - no extra scaling
+                    setActionPoint(worldX, worldY, worldDx, worldDy, 20.0, cameraExtentX / 16);
                     actionDrag = [0, 0];
                 } else {
                     clearActionPoint();
@@ -1059,21 +1066,28 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             document.getElementById('particleCount').addEventListener('input', (e) => {
                 particleCount = Math.pow(2, parseInt(e.target.value));
                 document.getElementById('particleCountValue').textContent = particleCount;
+                initSimulation();
             });
             
             document.getElementById('speciesCount').addEventListener('input', (e) => {
                 speciesCount = parseInt(e.target.value);
                 document.getElementById('speciesCountValue').textContent = speciesCount;
+                currentSeed = Math.floor(Math.random() * 0xFFFFFFFF);
+                initSimulation();
             });
             
             document.getElementById('simulationWidth').addEventListener('input', (e) => {
                 simulationWidth = parseInt(e.target.value) * 64;
                 document.getElementById('widthValue').textContent = simulationWidth;
+                // Reinitialize to recalculate grid
+                initSimulation();
             });
             
             document.getElementById('simulationHeight').addEventListener('input', (e) => {
                 simulationHeight = parseInt(e.target.value) * 64;
                 document.getElementById('heightValue').textContent = simulationHeight;
+                // Reinitialize to recalculate grid
+                initSimulation();
             });
             
             document.getElementById('friction').addEventListener('input', (e) => {
