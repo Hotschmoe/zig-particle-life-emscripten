@@ -7,16 +7,10 @@ pub fn build(b: *std.Build) void {
         .preferred_optimize_mode = .ReleaseFast, // Changed from ReleaseSmall for better performance
     });
 
-    // Option to enable SIMD (WebAssembly SIMD128)
-    const enable_simd = b.option(bool, "simd", "Enable SIMD optimizations (requires browser support)") orelse true;
-
-    // Special WASM target configuration for Emscripten
+    // Special WASM target configuration for Emscripten with SIMD enabled
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
-        .cpu_model = if (enable_simd) 
-            .{ .explicit = &std.Target.wasm.cpu.bleeding_edge } // Enables SIMD128
-        else 
-            .{ .explicit = &std.Target.wasm.cpu.mvp },
+        .cpu_model = .{ .explicit = &std.Target.wasm.cpu.bleeding_edge }, // SIMD128 always enabled
         .os_tag = .emscripten,
     });
 
@@ -24,7 +18,7 @@ pub fn build(b: *std.Build) void {
     const actual_target = if (is_wasm) wasm_target else target;
 
     if (is_wasm) {
-        buildWeb(b, actual_target, optimize, enable_simd) catch |err| {
+        buildWeb(b, actual_target, optimize) catch |err| {
             std.debug.print("Web build failed: {}\n", .{err});
             return;
         };
@@ -222,7 +216,7 @@ fn getEmscriptenPath(b: *std.Build, allocator: std.mem.Allocator) ![]const u8 {
 }
 
 // Web build using Emscripten
-fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_simd: bool) !void {
+fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {
     // Use build allocator for path strings (cleaned up automatically)
     const allocator = b.allocator;
 
@@ -286,17 +280,13 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         },
     }
 
-    // Add SIMD support if enabled
-    if (enable_simd) {
-        emcc_command.addArgs(&[_][]const u8{
-            "-msimd128",           // Enable WASM SIMD
-            "-msse",               // Additional SIMD hints
-            "-msse2",
-        });
-        std.debug.print("SIMD optimizations: ENABLED (requires Chrome 91+, Firefox 89+, Safari 16.4+)\n", .{});
-    } else {
-        std.debug.print("SIMD optimizations: DISABLED (maximum compatibility)\n", .{});
-    }
+    // SIMD is always enabled
+    emcc_command.addArgs(&[_][]const u8{
+        "-msimd128",           // Enable WASM SIMD
+        "-msse",               // Additional SIMD hints
+        "-msse2",
+    });
+    std.debug.print("SIMD optimizations: ENABLED (requires Chrome 91+, Firefox 89+, Safari 16.4+)\n", .{});
 
     // Additional optimization flags
     emcc_command.addArgs(&[_][]const u8{

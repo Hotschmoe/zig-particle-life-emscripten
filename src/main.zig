@@ -924,10 +924,4 @@ export fn clearActionPoint() void {
     sim_options.action_force = 0.0;
 }
 
-// ============================================================================
-// Entry Point (for native testing)
-// ============================================================================
-
-pub fn main() void {
-    // This is only used for native builds, not for WASM
-}
+// No main() function needed - this is a WASM library, not an executable

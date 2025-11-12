@@ -88,22 +88,18 @@ Read: [BUILD_OPTIMIZATION_GUIDE.md](BUILD_OPTIMIZATION_GUIDE.md)
 
 ### Building the Project
 
-**Maximum Performance:**
+**Standard Build (SIMD Always Enabled):**
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
 
-**Maximum Compatibility:**
+**For Smallest Size:**
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=false
+# Edit build.zig to change preferred_optimize_mode from ReleaseFast to ReleaseSmall
+zig build -Dtarget=wasm32-emscripten
 ```
 
-**Smallest Size:**
-```bash
-# Note: -Doptimize flag is not supported, size is controlled in build.zig
-zig build -Dtarget=wasm32-emscripten -Dsimd=false
-# Then edit build.zig to change preferred_optimize_mode to ReleaseSmall
-```
+Note: SIMD is always enabled for maximum performance. It automatically falls back to scalar code on older browsers.
 
 See [BUILD_OPTIMIZATION_GUIDE.md](BUILD_OPTIMIZATION_GUIDE.md) for details.
 

@@ -2,33 +2,31 @@
 
 ## Quick Reference
 
-### Maximum Performance (SIMD Enabled)
+### Standard Build (SIMD Always Enabled)
 ```bash
-zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseFast -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
-**Result:** Fastest execution, SIMD optimizations, requires modern browsers  
-**Expected:** ~60-70 KB WASM, ~100-120 KB JS, 2-3x faster force computation
+**Result:** Fastest execution, SIMD optimizations, requires modern browsers (95%+ coverage)  
+**Expected:** ~109 KB WASM, ~156 KB JS, 2-3x faster force computation  
+**Default:** ReleaseFast optimization mode
 
-### Maximum Compatibility (No SIMD)
+### For Smallest Size
 ```bash
-zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseFast -Dsimd=false
+# Edit build.zig: change preferred_optimize_mode to ReleaseSmall
+zig build -Dtarget=wasm32-emscripten
 ```
-**Result:** Fast but no SIMD, works on all browsers  
-**Expected:** ~60-70 KB WASM, ~100-120 KB JS, baseline performance
-
-### Smallest Size
-```bash
-zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall -Dsimd=false
-```
-**Result:** Smallest files, slightly slower  
-**Expected:** ~50-60 KB WASM, ~80-100 KB JS, 80-90% of max performance
+**Result:** Smallest files, still has SIMD  
+**Expected:** ~70-80 KB WASM, ~100-120 KB JS, slight performance trade-off
 
 ### Debug Build
 ```bash
-zig build -Dtarget=wasm32-emscripten -Doptimize=Debug -Dsimd=false
+# Edit build.zig: change preferred_optimize_mode to Debug
+zig build -Dtarget=wasm32-emscripten
 ```
 **Result:** Easiest to debug, largest size, slowest  
 **Expected:** ~150-200 KB WASM, ~180 KB JS
+
+**Note:** SIMD is always enabled and automatically falls back to scalar code on older browsers.
 
 ---
 

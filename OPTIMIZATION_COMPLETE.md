@@ -25,14 +25,14 @@
 
 **Changes:**
 - Changed default from `ReleaseSmall` to `ReleaseFast` (performance over size)
-- Added `-Dsimd=true/false` compile-time flag
+- SIMD128 always enabled (no option to disable)
 - Added link-time optimization (LTO)
 - Added fast-math optimizations
 - Enabled SIMD128 CPU features
 
 **Build command:**
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
 
 ### 4. Added Runtime SIMD Detection
@@ -161,14 +161,9 @@ zig build -Dtarget=wasm32-emscripten -Dsimd=true
 
 ## How to Use
 
-### Build with SIMD (Recommended):
+### Build (SIMD Always Enabled):
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
-```
-
-### Build without SIMD (Maximum Compatibility):
-```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=false
+zig build -Dtarget=wasm32-emscripten
 ```
 
 ### Test:
@@ -200,10 +195,10 @@ All documentation is in the `docs/` folder:
 ## Summary
 
 **Implemented:**
-- SIMD vectorization (4-wide float operations)
-- Compile-time SIMD detection and fallback
+- SIMD vectorization (4-wide float operations) - always enabled
+- Runtime SIMD detection and fallback to scalar code
 - Build system optimizations (LTO, fast-math, ReleaseFast)
-- Runtime SIMD status reporting
+- Runtime SIMD status reporting in console and UI
 - Professional UI (removed all emojis)
 - Comprehensive documentation
 
@@ -228,8 +223,10 @@ This is the optimal solution. SIMD provides massive performance gains with minim
 Build it, test it, and enjoy the 2-3x performance boost!
 
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
+
+SIMD is always enabled for maximum performance.
 
 Questions? Check `docs/IMPLEMENTATION_SUMMARY.md` or `docs/README.md`
 

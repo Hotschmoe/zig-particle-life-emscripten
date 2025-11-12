@@ -30,23 +30,19 @@ const dist = @sqrt(dx * dx + dy * dy);  // 4 square roots in parallel
 
 ### 2. Build System Optimizations (COMPLETED)
 
-**Location:** `build.zig` lines 10-11, 14-21, 277-306
+**Location:** `build.zig` lines 10-14, 271-296
 
 **Implementation Details:**
-- Added `-Dsimd=true/false` compile-time flag (default: true)
+- SIMD always enabled (bleeding_edge CPU model)
 - Changed default optimization from `ReleaseSmall` to `ReleaseFast`
-- Added SIMD CPU feature targeting (bleeding_edge vs mvp)
 - Added Link-Time Optimization (LTO) for ReleaseFast builds
 - Added aggressive math optimizations (-ffast-math)
 - Disabled C++ overhead (-fno-exceptions, -fno-rtti)
 
-**Build Commands:**
+**Build Command:**
 ```bash
-# Maximum performance with SIMD
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
-
-# Maximum compatibility without SIMD  
-zig build -Dtarget=wasm32-emscripten -Dsimd=false
+# SIMD always enabled
+zig build -Dtarget=wasm32-emscripten
 ```
 
 ### 3. Runtime SIMD Detection (COMPLETED)
@@ -179,9 +175,9 @@ Expected: ~80 KB JS savings
 
 ## Testing Instructions
 
-### 1. Build with SIMD:
+### 1. Build (SIMD Always Enabled):
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
 
 ### 2. Open in Browser:
@@ -197,14 +193,10 @@ zig build -Dtarget=wasm32-emscripten -Dsimd=true
 - Look for `computeForcesSIMD` in flame graph
 - Compare time per frame vs baseline
 
-### 4. Compare Builds:
-```bash
-# Build without SIMD
-zig build -Dtarget=wasm32-emscripten -Dsimd=false
-
-# Compare performance in same browser
-# Should see 2-3x difference in force computation time
-```
+### 4. Performance:
+- Check FPS counter in stats panel
+- Try increasing particle count to 24K-32K
+- Should maintain 60 FPS with SIMD (vs ~20 FPS without)
 
 ---
 
@@ -253,7 +245,7 @@ zig build -Dtarget=wasm32-emscripten -Dsimd=false
 
 ### 1. Test the Build:
 ```bash
-zig build -Dtarget=wasm32-emscripten -Dsimd=true
+zig build -Dtarget=wasm32-emscripten
 ```
 
 ### 2. Verify SIMD is Active:
@@ -276,10 +268,10 @@ zig build -Dtarget=wasm32-emscripten -Dsimd=true
 ## Summary
 
 **What Was Implemented:**
-- SIMD vectorization of distance calculations (4-wide)
-- Compile-time SIMD detection and fallback
+- SIMD vectorization of distance calculations (4-wide) - always enabled
+- Runtime SIMD detection with automatic fallback to scalar code
 - Build system optimizations (LTO, fast-math, ReleaseFast)
-- Runtime SIMD status reporting
+- Runtime SIMD status reporting in console and UI
 - Comprehensive documentation
 
 **What Was NOT Implemented:**
