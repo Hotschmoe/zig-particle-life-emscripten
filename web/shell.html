@@ -198,10 +198,10 @@
         <div style="font-size: 14px; margin-top: 10px; color: #888;">Please wait</div>
     </div>
     
-    <button id="toggleControls" class="hidden">⚙️ Toggle Controls [S]</button>
+    <button id="toggleControls" class="hidden">Toggle Controls [S]</button>
     
     <div id="controls" class="hidden">
-        <h1>🌌 Particle Life Simulator</h1>
+        <h1>Particle Life Simulator</h1>
         
         <div class="control-group">
             <label>Particles: <span class="value-display" id="particleCountValue">16384</span></label>
@@ -242,32 +242,32 @@
         </div>
         
         <div class="button-row">
-            <button id="togglePause">⏸️ Pause</button>
-            <button id="centerView">📍 Center</button>
+            <button id="togglePause">Pause</button>
+            <button id="centerView">Center</button>
         </div>
         
         <div class="button-row">
-            <button id="restart">🔄 Restart</button>
-            <button id="randomize">🎲 Randomize</button>
+            <button id="restart">Restart</button>
+            <button id="randomize">Randomize</button>
         </div>
         
         <div class="button-row">
-            <button id="saveSystem">💾 Save</button>
-            <button id="loadSystem">📂 Load</button>
+            <button id="saveSystem">Save</button>
+            <button id="loadSystem">Load</button>
         </div>
         
         <div class="button-row">
-            <button id="copyUrl">🔗 Copy URL</button>
-            <button id="fullscreen">⛶ Fullscreen</button>
+            <button id="copyUrl">Copy URL</button>
+            <button id="fullscreen">Fullscreen</button>
         </div>
         
         <div class="info">
-            <div>🖱️ <strong>Left Click + Drag:</strong> Push particles</div>
-            <div>🖱️ <strong>Right Click + Drag:</strong> Pan camera</div>
-            <div>🔍 <strong>Mouse Wheel:</strong> Zoom in/out</div>
-            <div>⌨️ <strong>Space:</strong> Pause/Resume</div>
-            <div>⌨️ <strong>S:</strong> Toggle controls</div>
-            <div>⌨️ <strong>C:</strong> Center view</div>
+            <div><strong>Left Click + Drag:</strong> Push particles</div>
+            <div><strong>Right Click + Drag:</strong> Pan camera</div>
+            <div><strong>Mouse Wheel:</strong> Zoom in/out</div>
+            <div><strong>Space:</strong> Pause/Resume</div>
+            <div><strong>S:</strong> Toggle controls</div>
+            <div><strong>C:</strong> Center view</div>
         </div>
     </div>
     
@@ -1141,7 +1141,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             
             document.getElementById('togglePause').addEventListener('click', (e) => {
                 isPaused = !isPaused;
-                e.target.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+                e.target.textContent = isPaused ? 'Resume' : 'Pause';
             });
             
             document.getElementById('centerView').addEventListener('click', () => {
@@ -1293,10 +1293,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 try {
                     if (document.fullscreenElement) {
                         await document.exitFullscreen();
-                        document.getElementById('fullscreen').textContent = '⛶ Fullscreen';
+                        document.getElementById('fullscreen').textContent = 'Fullscreen';
                     } else {
                         await document.body.requestFullscreen();
-                        document.getElementById('fullscreen').textContent = '⛶ Exit Fullscreen';
+                        document.getElementById('fullscreen').textContent = 'Exit Fullscreen';
                     }
                 } catch (error) {
                     console.error('Fullscreen error:', error);

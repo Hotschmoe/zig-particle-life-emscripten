@@ -2,7 +2,7 @@
 
 ## Current Computation Distribution
 
-### Zig/WASM (main.zig) - ✅ Excellent
+### Zig/WASM (main.zig) - Excellent
 **Heavy Computation (CPU-bound):**
 - Particle system initialization & memory allocation
 - Random number generation (SplitMix32)
@@ -14,7 +14,7 @@
 
 **Performance:** ~60 FPS with 16,384 particles
 
-### JavaScript (shell.html) - ✅ Appropriate
+### JavaScript (shell.html) - Appropriate
 **GPU & I/O Operations:**
 - WebGPU initialization and device management
 - Shader compilation and pipeline setup
@@ -78,9 +78,9 @@ emcc ... -s ENVIRONMENT=web -s EXPORTED_FUNCTIONS="['_initParticleSystem','_simu
 ### 3. Computation Transfer (JavaScript → Zig)
 
 #### Low Priority (Already Optimal):
-- ❌ **Rendering:** Must stay in JS/WebGPU (GPU-bound, not CPU-bound)
-- ❌ **UI Events:** Minimal overhead, JS is fine here
-- ✅ **Physics:** Already in Zig - excellent!
+- **Rendering:** Must stay in JS/WebGPU (GPU-bound, not CPU-bound)
+- **UI Events:** Minimal overhead, JS is fine here
+- **Physics:** Already in Zig - excellent!
 
 #### Medium Priority (Nice to Have):
 - **Camera Math:** Could move smooth interpolation to Zig
@@ -88,9 +88,9 @@ emcc ... -s ENVIRONMENT=web -s EXPORTED_FUNCTIONS="['_initParticleSystem','_simu
   - Benefit: Cleaner separation of concerns
 
 #### Already Optimal:
-- Force computation is in Zig ✅
-- Particle updates are in Zig ✅
-- Spatial binning is in Zig ✅
+- Force computation is in Zig
+- Particle updates are in Zig
+- Spatial binning is in Zig
 
 ---
 
@@ -145,10 +145,10 @@ const new_vx_vec = vx_vec * friction_vec;
 ### WebAssembly SIMD Support
 
 **Browser Compatibility:**
-- ✅ Chrome 91+ (May 2021)
-- ✅ Firefox 89+ (June 2021)
-- ✅ Safari 16.4+ (March 2023)
-- ✅ Edge 91+
+- Chrome 91+ (May 2021)
+- Firefox 89+ (June 2021)
+- Safari 16.4+ (March 2023)
+- Edge 91+
 
 **Build Flag:**
 ```bash
@@ -181,11 +181,11 @@ const new_vx_vec = vx_vec * friction_vec;
 ## Implementation Priority
 
 ### High Priority (Do First):
-1. ✅ **Build with release flags** (-O ReleaseFast -fstrip)
+1. **Build with release flags** (-O ReleaseFast -fstrip)
    - Effort: 5 minutes
    - Gain: 20-30% size reduction, 10-20% speed boost
 
-2. 🎯 **SIMD in force computation**
+2. **SIMD in force computation**
    - Effort: 2-3 hours
    - Gain: 2-3x force computation speed
 
@@ -207,17 +207,17 @@ const new_vx_vec = vx_vec * friction_vec;
 
 ## Code Health Assessment
 
-### ✅ Excellent:
+### Excellent:
 - Clean separation of concerns (physics in Zig, rendering in JS)
 - Efficient spatial binning (O(n) instead of O(n²))
 - No unnecessary data copies
 - Smart indirect indexing to avoid particle reordering
 
-### ⚠️ Minor Issues:
+### Minor Issues:
 - Custom math functions (sqrt, exp) could use intrinsics
 - Could use `@sqrt()` directly (already doing this)
 
-### 💡 Suggestions:
+### Suggestions:
 - Add compile-time flags for SIMD vs scalar fallback
 - Consider WebGPU compute shaders for force computation (future enhancement)
 - Profile with Chrome DevTools to identify bottlenecks
