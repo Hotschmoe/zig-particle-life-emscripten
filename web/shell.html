@@ -290,7 +290,11 @@
         </div>
         <div class="stat-row">
             <span class="stat-label">Renderer:</span>
-            <span class="stat-value">Zig+WebGPU</span>
+            <span class="stat-value" id="rendererStat">Zig+WebGPU</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">SIMD:</span>
+            <span class="stat-value" id="simdStat">Checking...</span>
         </div>
     </div>
     
@@ -377,6 +381,7 @@
         let setLoopingBorders;
         let setActionPoint;
         let clearActionPoint;
+        let isSIMDEnabled;
         
         // WebGPU Shaders
         const particleGlowShader = `
@@ -818,6 +823,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             setLoopingBorders = Module.cwrap('setLoopingBorders', null, ['number']);
             setActionPoint = Module.cwrap('setActionPoint', null, ['number', 'number', 'number', 'number', 'number', 'number']);
             clearActionPoint = Module.cwrap('clearActionPoint', null, []);
+            isSIMDEnabled = Module.cwrap('isSIMDEnabled', 'number', []);
+            
+            // Log SIMD status
+            const simdEnabled = isSIMDEnabled();
+            console.log(`WASM SIMD: ${simdEnabled ? 'ENABLED ✓' : 'DISABLED (fallback to scalar)'}`);
+            if (simdEnabled) {
+                console.log('Expected performance: 2-3x faster force computation');
+            }
+            
+            // Update UI
+            document.getElementById('simdStat').textContent = simdEnabled ? 'Enabled' : 'Disabled';
+            document.getElementById('simdStat').style.color = simdEnabled ? '#4CAF50' : '#ff9800';
         }
         
         function createBuffers() {

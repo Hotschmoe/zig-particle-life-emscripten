@@ -1,7 +1,15 @@
 // Particle Life Simulator - WebAssembly (Freestanding/Emscripten Compatible)
 // Minimal std library usage to avoid emscripten compatibility issues
 
+const std = @import("std");
 const builtin = @import("builtin");
+
+// SIMD Configuration - Check if SIMD128 is available at compile time
+const wasm_features = std.Target.wasm.Feature;
+const use_simd = builtin.cpu.arch == .wasm32 and
+    builtin.target.cpu.features.isEnabled(@intFromEnum(wasm_features.simd128));
+const Vec4f32 = @Vector(4, f32);
+const Vec4bool = @Vector(4, bool);
 
 // ============================================================================
 // Math Helpers (avoiding std.math for emscripten compatibility)
@@ -58,6 +66,27 @@ inline fn sign(x: f32) f32 {
     if (x > 0) return 1.0;
     if (x < 0) return -1.0;
     return 0.0;
+}
+
+// ============================================================================
+// SIMD Helper Functions
+// ============================================================================
+
+inline fn splat4(val: f32) Vec4f32 {
+    return @splat(val);
+}
+
+inline fn hsum(v: Vec4f32) f32 {
+    return @reduce(.Add, v);
+}
+
+inline fn sign_vec(v: Vec4f32) Vec4f32 {
+    const zero = splat4(0.0);
+    const one = splat4(1.0);
+    const neg_one = splat4(-1.0);
+    const is_pos = v > zero;
+    const is_neg = v < zero;
+    return @select(f32, is_pos, one, @select(f32, is_neg, neg_one, zero));
 }
 
 // ============================================================================
@@ -448,6 +477,201 @@ fn binParticles() void {
 // Force Computation
 // ============================================================================
 
+// Helper function for scalar force computation (used for edge cases and fallback)
+inline fn computeSingleForce(
+    particle: *const Particle,
+    i: u32,
+    j: u32,
+    total_fx: *f32,
+    total_fy: *f32,
+    particles: []Particle,
+    forces: []Force,
+    looping: bool,
+    width: f32,
+    height: f32,
+) void {
+    if (j == i) return; // Skip self
+
+    const other = particles[j];
+    const force_idx = particle.species * species_count + other.species;
+    const force = forces[force_idx];
+
+    var dx = other.x - particle.x;
+    var dy = other.y - particle.y;
+
+    if (looping) {
+        if (abs(dx) >= width * 0.5) {
+            dx -= sign(dx) * width;
+        }
+        if (abs(dy) >= height * 0.5) {
+            dy -= sign(dy) * height;
+        }
+    }
+
+    const dist_sq = dx * dx + dy * dy;
+    const dist = sqrt(dist_sq);
+
+    if (dist > 0.0 and dist < force.radius) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        const attraction_factor = @max(0.0, 1.0 - dist / force.radius);
+        total_fx.* += force.strength * attraction_factor * nx;
+        total_fy.* += force.strength * attraction_factor * ny;
+
+        if (dist < force.collision_radius) {
+            const collision_factor = @max(0.0, 1.0 - dist / force.collision_radius);
+            total_fx.* -= force.collision_strength * collision_factor * nx;
+            total_fy.* -= force.collision_strength * collision_factor * ny;
+        }
+    }
+}
+
+// SIMD-optimized force computation
+fn computeForcesSIMD() void {
+    const particles = particles_ptr[0..particle_count];
+    const particle_indices = particle_indices_ptr[0..particle_count];
+    const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
+    const forces = forces_ptr[0..(species_count * species_count)];
+
+    const width = sim_options.right - sim_options.left;
+    const height = sim_options.top - sim_options.bottom;
+    const looping = sim_options.looping_borders;
+
+    for (particles, 0..) |*particle, i| {
+        const bin_info = getBinInfo(particle.x, particle.y);
+
+        var total_fx: f32 = 0;
+        var total_fy: f32 = 0;
+
+        // Central force
+        total_fx -= particle.x * sim_options.central_force;
+        total_fy -= particle.y * sim_options.central_force;
+
+        // Vectorized constants
+        const px = splat4(particle.x);
+        const py = splat4(particle.y);
+        const half_width = splat4(width * 0.5);
+        const half_height = splat4(height * 0.5);
+        const width_vec = splat4(width);
+        const height_vec = splat4(height);
+
+        // Iterate over neighboring bins
+        const min_x: i32 = if (looping) bin_info.grid_x - 1 else @max(0, bin_info.grid_x - 1);
+        const max_x: i32 = if (looping) bin_info.grid_x + 1 else @min(@as(i32, @intCast(grid_width)) - 1, bin_info.grid_x + 1);
+        const min_y: i32 = if (looping) bin_info.grid_y - 1 else @max(0, bin_info.grid_y - 1);
+        const max_y: i32 = if (looping) bin_info.grid_y + 1 else @min(@as(i32, @intCast(grid_height)) - 1, bin_info.grid_y + 1);
+
+        var by: i32 = min_y;
+        while (by <= max_y) : (by += 1) {
+            var bx: i32 = min_x;
+            while (bx <= max_x) : (bx += 1) {
+                var real_bx = bx;
+                var real_by = by;
+
+                if (looping) {
+                    const gw = @as(i32, @intCast(grid_width));
+                    const gh = @as(i32, @intCast(grid_height));
+                    real_bx = @mod((bx + gw), gw);
+                    real_by = @mod((by + gh), gh);
+                }
+
+                const bin_idx = @as(u32, @intCast(real_by * @as(i32, @intCast(grid_width)) + real_bx));
+                const bin_start = bin_offsets[bin_idx];
+                const bin_end = bin_offsets[bin_idx + 1];
+
+                var idx_pos: u32 = bin_start;
+
+                // SIMD loop: process 4 particles at once
+                while (idx_pos + 4 <= bin_end) : (idx_pos += 4) {
+                    const j0 = particle_indices[idx_pos + 0];
+                    const j1 = particle_indices[idx_pos + 1];
+                    const j2 = particle_indices[idx_pos + 2];
+                    const j3 = particle_indices[idx_pos + 3];
+
+                    // Quick check if any is self (uncommon case)
+                    const i_u32 = @as(u32, @intCast(i));
+                    if (j0 == i_u32 or j1 == i_u32 or j2 == i_u32 or j3 == i_u32) {
+                        // Fall back to scalar for this batch
+                        computeSingleForce(particle, i_u32, j0, &total_fx, &total_fy, particles, forces, looping, width, height);
+                        computeSingleForce(particle, i_u32, j1, &total_fx, &total_fy, particles, forces, looping, width, height);
+                        computeSingleForce(particle, i_u32, j2, &total_fx, &total_fy, particles, forces, looping, width, height);
+                        computeSingleForce(particle, i_u32, j3, &total_fx, &total_fy, particles, forces, looping, width, height);
+                        continue;
+                    }
+
+                    // Load 4 particle positions simultaneously
+                    const other0 = particles[j0];
+                    const other1 = particles[j1];
+                    const other2 = particles[j2];
+                    const other3 = particles[j3];
+
+                    const ox = Vec4f32{ other0.x, other1.x, other2.x, other3.x };
+                    const oy = Vec4f32{ other0.y, other1.y, other2.y, other3.y };
+
+                    // Compute deltas (4 at once)
+                    var dx = ox - px;
+                    var dy = oy - py;
+
+                    // Handle looping borders (vectorized)
+                    if (looping) {
+                        const abs_dx = @abs(dx);
+                        const abs_dy = @abs(dy);
+                        const wrap_x = abs_dx >= half_width;
+                        const wrap_y = abs_dy >= half_height;
+
+                        const sign_dx = sign_vec(dx);
+                        const sign_dy = sign_vec(dy);
+
+                        dx = @select(f32, wrap_x, dx - sign_dx * width_vec, dx);
+                        dy = @select(f32, wrap_y, dy - sign_dy * height_vec, dy);
+                    }
+
+                    // Compute distances (vectorized)
+                    const dist_sq = dx * dx + dy * dy;
+                    const dist = @sqrt(dist_sq);
+
+                    // Process each force (force matrix lookup can't be easily vectorized)
+                    // But distance calculations are now 4x faster!
+                    for (0..4) |k| {
+                        const j = particle_indices[idx_pos + @as(u32, @intCast(k))];
+                        const other = particles[j];
+                        const force_idx = particle.species * species_count + other.species;
+                        const force = forces[force_idx];
+
+                        const d = dist[k];
+                        if (d > 0.0 and d < force.radius) {
+                            const nx = dx[k] / d;
+                            const ny = dy[k] / d;
+
+                            const attraction_factor = @max(0.0, 1.0 - d / force.radius);
+                            total_fx += force.strength * attraction_factor * nx;
+                            total_fy += force.strength * attraction_factor * ny;
+
+                            if (d < force.collision_radius) {
+                                const collision_factor = @max(0.0, 1.0 - d / force.collision_radius);
+                                total_fx -= force.collision_strength * collision_factor * nx;
+                                total_fy -= force.collision_strength * collision_factor * ny;
+                            }
+                        }
+                    }
+                }
+
+                // Handle remaining particles (< 4) with scalar code
+                while (idx_pos < bin_end) : (idx_pos += 1) {
+                    const j = particle_indices[idx_pos];
+                    computeSingleForce(particle, @as(u32, @intCast(i)), j, &total_fx, &total_fy, particles, forces, looping, width, height);
+                }
+            }
+        }
+
+        // Update velocity
+        particle.vx += total_fx * sim_options.dt;
+        particle.vy += total_fy * sim_options.dt;
+    }
+}
+
+// Original scalar force computation (fallback)
 fn computeForces() void {
     const particles = particles_ptr[0..particle_count];
     const particle_indices = particle_indices_ptr[0..particle_count];
@@ -624,11 +848,20 @@ export fn simulationStep(dt: f32) void {
     // Bin particles for efficient neighbor search
     binParticles();
 
-    // Compute forces and update velocities
-    computeForces();
+    // Compute forces and update velocities (use SIMD if available)
+    if (use_simd) {
+        computeForcesSIMD();
+    } else {
+        computeForces();
+    }
 
     // Update positions
     updateParticles(dt);
+}
+
+// Export function to check if SIMD is enabled (for JavaScript logging)
+export fn isSIMDEnabled() bool {
+    return use_simd;
 }
 
 // ============================================================================

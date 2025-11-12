@@ -4,13 +4,19 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseSmall,
+        .preferred_optimize_mode = .ReleaseFast, // Changed from ReleaseSmall for better performance
     });
+
+    // Option to enable SIMD (WebAssembly SIMD128)
+    const enable_simd = b.option(bool, "simd", "Enable SIMD optimizations (requires browser support)") orelse true;
 
     // Special WASM target configuration for Emscripten
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
-        .cpu_model = .{ .explicit = &std.Target.wasm.cpu.mvp },
+        .cpu_model = if (enable_simd) 
+            .{ .explicit = &std.Target.wasm.cpu.bleeding_edge } // Enables SIMD128
+        else 
+            .{ .explicit = &std.Target.wasm.cpu.mvp },
         .os_tag = .emscripten,
     });
 
@@ -18,7 +24,7 @@ pub fn build(b: *std.Build) void {
     const actual_target = if (is_wasm) wasm_target else target;
 
     if (is_wasm) {
-        buildWeb(b, actual_target, optimize) catch |err| {
+        buildWeb(b, actual_target, optimize, enable_simd) catch |err| {
             std.debug.print("Web build failed: {}\n", .{err});
             return;
         };
@@ -216,7 +222,7 @@ fn getEmscriptenPath(b: *std.Build, allocator: std.mem.Allocator) ![]const u8 {
 }
 
 // Web build using Emscripten
-fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {
+fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_simd: bool) !void {
     // Use build allocator for path strings (cleaned up automatically)
     const allocator = b.allocator;
 
@@ -256,7 +262,7 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     emcc_command.addArgs(&[_][]const u8{
         "-o",
         "web/particle-life.html",
-        "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint",
+        "-sEXPORTED_FUNCTIONS=_initParticleSystem,_generateRandomSystem,_simulationStep,_getParticleCount,_getParticleData,_getSpeciesData,_getForcesData,_getSpeciesCount,_setSimulationBounds,_setFriction,_setCentralForce,_setLoopingBorders,_setActionPoint,_clearActionPoint,_isSIMDEnabled",
         "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8,HEAP8,HEAPU32,HEAP32,HEAPF32,HEAPF64",
         "-sALLOW_MEMORY_GROWTH=1",
         "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)
@@ -272,11 +278,32 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     switch (optimize) {
         .Debug => emcc_command.addArg("-O0"),
         .ReleaseSafe => emcc_command.addArg("-O2"),
-        .ReleaseFast => emcc_command.addArg("-O3"),
+        .ReleaseFast => {
+            emcc_command.addArgs(&[_][]const u8{ "-O3", "-flto" }); // Link-time optimization
+        },
         .ReleaseSmall => {
             emcc_command.addArgs(&[_][]const u8{ "-Oz", "--closure", "1" });
         },
     }
+
+    // Add SIMD support if enabled
+    if (enable_simd) {
+        emcc_command.addArgs(&[_][]const u8{
+            "-msimd128",           // Enable WASM SIMD
+            "-msse",               // Additional SIMD hints
+            "-msse2",
+        });
+        std.debug.print("SIMD optimizations: ENABLED (requires Chrome 91+, Firefox 89+, Safari 16.4+)\n", .{});
+    } else {
+        std.debug.print("SIMD optimizations: DISABLED (maximum compatibility)\n", .{});
+    }
+
+    // Additional optimization flags
+    emcc_command.addArgs(&[_][]const u8{
+        "-ffast-math",            // Aggressive math optimizations
+        "-fno-exceptions",        // No C++ exceptions
+        "-fno-rtti",              // No runtime type info
+    });
 
     // Install to default step
     b.getInstallStep().dependOn(&emcc_command.step);
