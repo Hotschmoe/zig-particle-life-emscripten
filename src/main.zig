@@ -269,6 +269,12 @@ export fn initParticleSystem(p_count: u32, s_count: u32, seed: u32) bool {
     const indices_size = p_count * @sizeOf(u32);
     particle_indices_ptr = @ptrCast(@alignCast(allocBytes(indices_size, @alignOf(u32)) orelse return false));
 
+    // Initialize particle indices to prevent stale data issues
+    const particle_indices = particle_indices_ptr[0..p_count];
+    for (particle_indices) |*idx| {
+        idx.* = 0;
+    }
+
     // Allocate species
     const species_size = s_count * @sizeOf(Species);
     species_colors_ptr = @ptrCast(@alignCast(allocBytes(species_size, @alignOf(Species)) orelse return false));
@@ -288,6 +294,16 @@ export fn initParticleSystem(p_count: u32, s_count: u32, seed: u32) bool {
     const bins_size = (bin_count + 1) * @sizeOf(u32);
     bin_offsets_ptr = @ptrCast(@alignCast(allocBytes(bins_size, @alignOf(u32)) orelse return false));
     bin_temp_ptr = @ptrCast(@alignCast(allocBytes(bins_size, @alignOf(u32)) orelse return false));
+
+    // Initialize bin arrays to prevent stale data
+    const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
+    const bin_temp = bin_temp_ptr[0..(bin_count + 1)];
+    for (bin_offsets) |*offset| {
+        offset.* = 0;
+    }
+    for (bin_temp) |*temp| {
+        temp.* = 0;
+    }
 
     particle_count = p_count;
     species_count = s_count;

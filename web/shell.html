@@ -328,6 +328,7 @@
         // Simulation state
         let isRunning = false;
         let isPaused = false;
+        let isReinitializing = false;
         let particleCount = 16384;
         let speciesCount = 6;
         let simulationWidth = 1024;
@@ -838,64 +839,147 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         
         function createBuffers() {
-            // Create particle buffer
-            const particleDataSize = particleCount * 20; // 5 floats per particle
-            particleBuffer = device.createBuffer({
-                label: 'Particle Buffer',
-                size: particleDataSize,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            });
-            
-            // Create species buffer (now includes spawn_weight)
-            const speciesDataSize = speciesCount * 20; // 5 floats per species
-            speciesBuffer = device.createBuffer({
-                label: 'Species Buffer',
-                size: speciesDataSize,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            });
-            
-            // Create uniform buffer (camera + particle size)
-            uniformBuffer = device.createBuffer({
-                label: 'Uniform Buffer',
-                size: 32, // 2 vec2 + 2 floats + padding
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
-            
-            // Create bind group
-            renderBindGroup = device.createBindGroup({
-                label: 'Particle Render Bind Group',
-                layout: renderPipeline.getBindGroupLayout(0),
-                entries: [
-                    { binding: 0, resource: { buffer: particleBuffer } },
-                    { binding: 1, resource: { buffer: speciesBuffer } },
-                    { binding: 2, resource: { buffer: uniformBuffer } },
-                ],
-            });
+            try {
+                // Create particle buffer
+                const particleDataSize = particleCount * 20; // 5 floats per particle
+                particleBuffer = device.createBuffer({
+                    label: 'Particle Buffer',
+                    size: particleDataSize,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                
+                // Create species buffer (now includes spawn_weight)
+                const speciesDataSize = speciesCount * 20; // 5 floats per species
+                speciesBuffer = device.createBuffer({
+                    label: 'Species Buffer',
+                    size: speciesDataSize,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+                
+                // Create uniform buffer (camera + particle size)
+                uniformBuffer = device.createBuffer({
+                    label: 'Uniform Buffer',
+                    size: 32, // 2 vec2 + 2 floats + padding
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+                
+                // Create bind group
+                renderBindGroup = device.createBindGroup({
+                    label: 'Particle Render Bind Group',
+                    layout: renderPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: particleBuffer } },
+                        { binding: 1, resource: { buffer: speciesBuffer } },
+                        { binding: 2, resource: { buffer: uniformBuffer } },
+                    ],
+                });
+                
+                console.log(`Buffers created: ${particleCount} particles, ${speciesCount} species`);
+            } catch (error) {
+                console.error('Failed to create buffers:', error);
+                throw error;
+            }
         }
         
-        function initSimulation() {
-            const success = initParticleSystem(particleCount, speciesCount, currentSeed);
-            
-            if (!success) {
-                console.error('Failed to initialize particle system');
+        async function initSimulation() {
+            // Prevent overlapping reinitialization calls
+            if (isReinitializing) {
+                console.log('Reinitialization already in progress, skipping...');
                 return false;
             }
             
-            generateRandomSystem(symmetricForces ? 1 : 0);
+            isReinitializing = true;
+            const wasPaused = isPaused;
             
-            // Set simulation bounds
-            const W = Math.round(simulationWidth / 64) * 32;
-            const H = Math.round(simulationHeight / 64) * 32;
-            setSimulationBounds(-W, W, -H, H);
-            setFriction(friction);
-            setCentralForce(centralForce);
-            setLoopingBorders(loopingBorders ? 1 : 0);
-            
-            // Recreate GPU buffers
-            createBuffers();
-            
-            updateUIValues();
-            return true;
+            try {
+                console.log(`[INIT START] Initializing: ${particleCount} particles, ${speciesCount} species`);
+                
+                // Temporarily pause simulation to prevent race conditions
+                isPaused = true;
+                console.log('[INIT] Paused simulation');
+                
+                // Wait for any pending GPU work to complete before destroying buffers
+                if (device) {
+                    console.log('[INIT] Waiting for GPU work to complete...');
+                    await device.queue.onSubmittedWorkDone();
+                    console.log('[INIT] GPU work completed');
+                }
+                
+                // Small delay to ensure render loop has exited
+                console.log('[INIT] Waiting for render loop to settle...');
+                await new Promise(resolve => setTimeout(resolve, 50));
+                console.log('[INIT] Ready to destroy old buffers');
+                
+                // Clear old buffer references before destroying them
+                const oldParticleBuffer = particleBuffer;
+                const oldSpeciesBuffer = speciesBuffer;
+                const oldUniformBuffer = uniformBuffer;
+                
+                particleBuffer = null;
+                speciesBuffer = null;
+                uniformBuffer = null;
+                renderBindGroup = null;
+                console.log('[INIT] Cleared buffer references');
+                
+                // Now destroy the old buffers
+                if (oldParticleBuffer) {
+                    oldParticleBuffer.destroy();
+                    console.log('[INIT] Destroyed old particle buffer');
+                }
+                if (oldSpeciesBuffer) {
+                    oldSpeciesBuffer.destroy();
+                    console.log('[INIT] Destroyed old species buffer');
+                }
+                if (oldUniformBuffer) {
+                    oldUniformBuffer.destroy();
+                    console.log('[INIT] Destroyed old uniform buffer');
+                }
+                
+                // Initialize WASM particle system
+                console.log('[INIT] Calling initParticleSystem...');
+                const success = initParticleSystem(particleCount, speciesCount, currentSeed);
+                
+                if (!success) {
+                    console.error('[INIT ERROR] Failed to initialize particle system - WASM allocation failed');
+                    return false;
+                }
+                console.log('[INIT] WASM particle system initialized');
+                
+                console.log('[INIT] Generating random system...');
+                generateRandomSystem(symmetricForces ? 1 : 0);
+                console.log('[INIT] Random system generated');
+                
+                // Set simulation bounds
+                const W = Math.round(simulationWidth / 64) * 32;
+                const H = Math.round(simulationHeight / 64) * 32;
+                console.log(`[INIT] Setting bounds: ${-W} to ${W}, ${-H} to ${H}`);
+                setSimulationBounds(-W, W, -H, H);
+                setFriction(friction);
+                setCentralForce(centralForce);
+                setLoopingBorders(loopingBorders ? 1 : 0);
+                console.log('[INIT] Simulation parameters set');
+                
+                // Recreate GPU buffers
+                console.log('[INIT] Creating new GPU buffers...');
+                createBuffers();
+                console.log('[INIT] GPU buffers created');
+                
+                updateUIValues();
+                console.log('[INIT] UI values updated');
+                
+                // Restore pause state
+                isPaused = wasPaused;
+                console.log(`[INIT] Restored pause state: ${wasPaused}`);
+                
+                console.log('[INIT COMPLETE] Simulation initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Error during simulation initialization:', error);
+                isPaused = wasPaused;
+                return false;
+            } finally {
+                isReinitializing = false;
+            }
         }
         
         function updateUIValues() {
@@ -911,6 +995,11 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         
         function updateGPUBuffers() {
+            // Safety check: don't update if buffers aren't ready
+            if (!particleBuffer || !speciesBuffer) {
+                return;
+            }
+            
             // Get particle data from WASM memory
             const particleDataPtr = getParticleData();
             const particleDataView = new Float32Array(
@@ -950,22 +1039,30 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
             
             const pixelsPerUnit = canvas.width / (2.0 * cameraExtentX);
             
-            // Update uniform data
-            const uniformData = new Float32Array(8);
-            uniformData[0] = cameraX;
-            uniformData[1] = cameraY;
-            uniformData[2] = cameraExtentX;
-            uniformData[3] = cameraExtentY;
-            uniformData[4] = 3.0; // particle size
-            uniformData[5] = pixelsPerUnit;
-            // uniformData[6-7] padding
-            
-            device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+            // Only update uniform buffer if it exists
+            if (uniformBuffer) {
+                // Update uniform data
+                const uniformData = new Float32Array(8);
+                uniformData[0] = cameraX;
+                uniformData[1] = cameraY;
+                uniformData[2] = cameraExtentX;
+                uniformData[3] = cameraExtentY;
+                uniformData[4] = 3.0; // particle size
+                uniformData[5] = pixelsPerUnit;
+                // uniformData[6-7] padding
+                
+                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+            }
             
             return pixelsPerUnit;
         }
         
         function render() {
+            // Safety check: don't render if buffers aren't ready
+            if (!particleBuffer || !speciesBuffer || !uniformBuffer || !renderBindGroup) {
+                return;
+            }
+            
             const pixelsPerUnit = updateUniforms();
             
             const encoder = device.createCommandEncoder({ label: 'Render Encoder' });
@@ -1029,6 +1126,12 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 document.getElementById('fps').textContent = frameCount;
                 frameCount = 0;
                 fpsUpdateTime = currentTime;
+            }
+            
+            // Skip simulation and rendering if we're reinitializing
+            if (isReinitializing) {
+                requestAnimationFrame(animate);
+                return;
             }
             
             // Run simulation step
@@ -1462,7 +1565,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
                 setupEventHandlers();
                 
                 // Initialize simulation
-                if (!initSimulation()) return;
+                if (!await initSimulation()) return;
                 
                 centerView();
                 
