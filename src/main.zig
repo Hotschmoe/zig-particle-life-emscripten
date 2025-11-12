@@ -135,6 +135,7 @@ const SimulationOptions = struct {
 
 var particles_ptr: [*]Particle = undefined;
 var particle_temp_ptr: [*]Particle = undefined;
+var particle_indices_ptr: [*]u32 = undefined; // NEW: Indirect index array
 var species_colors_ptr: [*]Species = undefined;
 var forces_ptr: [*]Force = undefined;
 var bin_offsets_ptr: [*]u32 = undefined;
@@ -195,13 +196,23 @@ const BinInfo = struct {
 };
 
 fn getBinInfo(x: f32, y: f32) BinInfo {
-    const grid_x = @as(i32, @intFromFloat(floor((x - sim_options.left) / sim_options.bin_size)));
-    const grid_y = @as(i32, @intFromFloat(floor((y - sim_options.bottom) / sim_options.bin_size)));
+    // Calculate bin ID using floor, matching reference implementation exactly
+    const fx = (x - sim_options.left) / sim_options.bin_size;
+    const fy = (y - sim_options.bottom) / sim_options.bin_size;
 
-    const clamped_x = @max(0, @min(@as(i32, @intCast(grid_width)) - 1, grid_x));
-    const clamped_y = @max(0, @min(@as(i32, @intCast(grid_height)) - 1, grid_y));
+    // Convert to int after floor
+    const grid_x_raw = @as(i32, @intFromFloat(floor(fx)));
+    const grid_y_raw = @as(i32, @intFromFloat(floor(fy)));
 
-    const bin_index = @as(u32, @intCast(clamped_y * @as(i32, @intCast(grid_width)) + clamped_x));
+    // Clamp to valid range [0, grid_size - 1]
+    const grid_x_max = @as(i32, @intCast(grid_width)) - 1;
+    const grid_y_max = @as(i32, @intCast(grid_height)) - 1;
+
+    const clamped_x = @max(0, @min(grid_x_max, grid_x_raw));
+    const clamped_y = @max(0, @min(grid_y_max, grid_y_raw));
+
+    // Calculate bin index: row-major order (y * width + x)
+    const bin_index = @as(u32, @intCast(clamped_y)) * grid_width + @as(u32, @intCast(clamped_x));
 
     return .{
         .grid_x = clamped_x,
@@ -224,6 +235,10 @@ export fn initParticleSystem(p_count: u32, s_count: u32, seed: u32) bool {
     const particles_size = p_count * @sizeOf(Particle);
     particles_ptr = @ptrCast(@alignCast(allocBytes(particles_size, @alignOf(Particle)) orelse return false));
     particle_temp_ptr = @ptrCast(@alignCast(allocBytes(particles_size, @alignOf(Particle)) orelse return false));
+
+    // Allocate particle index array for indirect binning
+    const indices_size = p_count * @sizeOf(u32);
+    particle_indices_ptr = @ptrCast(@alignCast(allocBytes(indices_size, @alignOf(u32)) orelse return false));
 
     // Allocate species
     const species_size = s_count * @sizeOf(Species);
@@ -376,39 +391,57 @@ fn memcpy(dest: [*]u8, src: [*]const u8, size: usize) void {
 
 fn binParticles() void {
     const particles = particles_ptr[0..particle_count];
-    const particle_temp = particle_temp_ptr[0..particle_count];
+    const particle_indices = particle_indices_ptr[0..particle_count];
     const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
     const bin_temp = bin_temp_ptr[0..(bin_count + 1)];
 
-    // Clear bins
-    memset(@ptrCast(bin_offsets.ptr), 0, (bin_count + 1) * @sizeOf(u32));
-
-    // Count particles per bin
-    for (particles) |particle| {
-        const bin_info = getBinInfo(particle.x, particle.y);
-        bin_offsets[bin_info.bin_index + 1] += 1;
-    }
-
-    // Prefix sum to get offsets
-    var sum: u32 = 0;
+    // Step 1: Clear bin counters
     for (bin_offsets) |*offset| {
-        const current = offset.*;
-        offset.* = sum;
-        sum += current;
+        offset.* = 0;
     }
 
-    // Sort particles into bins
-    memset(@ptrCast(bin_temp.ptr), 0, (bin_count + 1) * @sizeOf(u32));
+    // Step 2: Count particles per bin (histogram)
+    // Note: We count into bin_offsets[bin_index + 1] for the prefix sum
     for (particles) |particle| {
         const bin_info = getBinInfo(particle.x, particle.y);
-        const offset = bin_offsets[bin_info.bin_index];
-        const index = offset + bin_temp[bin_info.bin_index];
-        particle_temp[index] = particle;
-        bin_temp[bin_info.bin_index] += 1;
+        // Safety check to prevent out-of-bounds
+        if (bin_info.bin_index < bin_count) {
+            bin_offsets[bin_info.bin_index + 1] += 1;
+        }
     }
 
-    // Copy sorted particles back
-    memcpy(@ptrCast(particles.ptr), @ptrCast(particle_temp.ptr), particle_count * @sizeOf(Particle));
+    // Step 3: Exclusive prefix sum to convert counts to offsets
+    // After this, bin_offsets[i] contains the starting index for bin i
+    var accumulated: u32 = 0;
+    for (bin_offsets) |*offset| {
+        const current_count = offset.*;
+        offset.* = accumulated;
+        accumulated += current_count;
+    }
+    // Now bin_offsets[bin_count] contains total particle count (should == particle_count)
+
+    // Step 4: Sort INDICES into bins (not particles themselves!)
+    // This way particles stay in place and we can safely check i == j
+    // bin_temp tracks how many indices we've placed in each bin so far
+    for (bin_temp) |*temp| {
+        temp.* = 0;
+    }
+
+    for (particles, 0..) |particle, i| {
+        const bin_info = getBinInfo(particle.x, particle.y);
+        if (bin_info.bin_index < bin_count) {
+            const bin_start = bin_offsets[bin_info.bin_index];
+            const local_offset = bin_temp[bin_info.bin_index];
+            const target_index = bin_start + local_offset;
+
+            // Safety check
+            if (target_index < particle_count) {
+                particle_indices[target_index] = @intCast(i); // Store particle index, not particle
+                bin_temp[bin_info.bin_index] += 1;
+            }
+        }
+    }
+    // Now particle_indices[] contains particle indices sorted by bin
 }
 
 // ============================================================================
@@ -417,6 +450,7 @@ fn binParticles() void {
 
 fn computeForces() void {
     const particles = particles_ptr[0..particle_count];
+    const particle_indices = particle_indices_ptr[0..particle_count];
     const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
     const forces = forces_ptr[0..(species_count * species_count)];
 
@@ -459,9 +493,10 @@ fn computeForces() void {
                 const bin_start = bin_offsets[bin_idx];
                 const bin_end = bin_offsets[bin_idx + 1];
 
-                var j: u32 = bin_start;
-                while (j < bin_end) : (j += 1) {
-                    if (j == i) continue;
+                var idx_pos: u32 = bin_start;
+                while (idx_pos < bin_end) : (idx_pos += 1) {
+                    const j = particle_indices[idx_pos]; // Get actual particle index
+                    if (j == i) continue; // Skip self-interaction
 
                     const other = particles[j];
                     const force_idx = particle.species * species_count + other.species;
