@@ -262,6 +262,7 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         "-sINITIAL_MEMORY=134217728", // 128MB (64MB heap + code + stack + runtime)
         "-sSTACK_SIZE=5242880", // 5MB
         "-sENVIRONMENT=web",
+        "-sUSE_WEBGPU=1",
         "--shell-file",
     });
     emcc_command.addFileArg(b.path("web/shell.html"));
@@ -282,17 +283,17 @@ fn buildWeb(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
 
     // SIMD is always enabled
     emcc_command.addArgs(&[_][]const u8{
-        "-msimd128",           // Enable WASM SIMD
-        "-msse",               // Additional SIMD hints
+        "-msimd128", // Enable WASM SIMD
+        "-msse", // Additional SIMD hints
         "-msse2",
     });
     std.debug.print("SIMD optimizations: ENABLED (requires Chrome 91+, Firefox 89+, Safari 16.4+)\n", .{});
 
     // Additional optimization flags
     emcc_command.addArgs(&[_][]const u8{
-        "-ffast-math",            // Aggressive math optimizations
-        "-fno-exceptions",        // No C++ exceptions
-        "-fno-rtti",              // No runtime type info
+        "-ffast-math", // Aggressive math optimizations
+        "-fno-exceptions", // No C++ exceptions
+        "-fno-rtti", // No runtime type info
     });
 
     // Install to default step
