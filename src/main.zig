@@ -164,7 +164,7 @@ const SimulationOptions = struct {
 
 var particles_ptr: [*]Particle = undefined;
 var particle_temp_ptr: [*]Particle = undefined;
-var particle_indices_ptr: [*]u32 = undefined; // NEW: Indirect index array
+// var particle_indices_ptr: [*]u32 = undefined; // REMOVED: No longer needed
 var species_colors_ptr: [*]Species = undefined;
 var forces_ptr: [*]Force = undefined;
 var bin_offsets_ptr: [*]u32 = undefined;
@@ -293,15 +293,15 @@ export fn initParticleSystem(p_count: u32, s_count: u32, seed: u32) bool {
     particles_ptr = @ptrCast(@alignCast(allocBytes(particles_size, @alignOf(Particle)) orelse return false));
     particle_temp_ptr = @ptrCast(@alignCast(allocBytes(particles_size, @alignOf(Particle)) orelse return false));
 
-    // Allocate particle index array for indirect binning
-    const indices_size = p_count * @sizeOf(u32);
-    particle_indices_ptr = @ptrCast(@alignCast(allocBytes(indices_size, @alignOf(u32)) orelse return false));
+    // Allocate particle index array for indirect binning - REMOVED
+    // const indices_size = p_count * @sizeOf(u32);
+    // particle_indices_ptr = @ptrCast(@alignCast(allocBytes(indices_size, @alignOf(u32)) orelse return false));
 
-    // Initialize particle indices to prevent stale data issues
-    const particle_indices = particle_indices_ptr[0..p_count];
-    for (particle_indices) |*idx| {
-        idx.* = 0;
-    }
+    // Initialize particle indices to prevent stale data issues - REMOVED
+    // const particle_indices = particle_indices_ptr[0..p_count];
+    // for (particle_indices) |*idx| {
+    //     idx.* = 0;
+    // }
 
     // Allocate species
     const species_size = s_count * @sizeOf(Species);
@@ -464,7 +464,7 @@ fn memcpy(dest: [*]u8, src: [*]const u8, size: usize) void {
 
 fn binParticles() void {
     const particles = particles_ptr[0..particle_count];
-    const particle_indices = particle_indices_ptr[0..particle_count];
+    const particle_temp = particle_temp_ptr[0..particle_count];
     const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
     const bin_temp = bin_temp_ptr[0..(bin_count + 1)];
 
@@ -474,47 +474,45 @@ fn binParticles() void {
     }
 
     // Step 2: Count particles per bin (histogram)
-    // Note: We count into bin_offsets[bin_index + 1] for the prefix sum
     for (particles) |particle| {
         const bin_info = getBinInfo(particle.x, particle.y);
-        // Safety check to prevent out-of-bounds
         if (bin_info.bin_index < bin_count) {
             bin_offsets[bin_info.bin_index + 1] += 1;
         }
     }
 
-    // Step 3: Exclusive prefix sum to convert counts to offsets
-    // After this, bin_offsets[i] contains the starting index for bin i
+    // Step 3: Exclusive prefix sum
     var accumulated: u32 = 0;
     for (bin_offsets) |*offset| {
         const current_count = offset.*;
-        offset.* = accumulated;
         accumulated += current_count;
+        offset.* = accumulated;
     }
-    // Now bin_offsets[bin_count] contains total particle count (should == particle_count)
 
-    // Step 4: Sort INDICES into bins (not particles themselves!)
-    // This way particles stay in place and we can safely check i == j
-    // bin_temp tracks how many indices we've placed in each bin so far
+    // Step 4: Reorder PARTICLES into temp buffer
     for (bin_temp) |*temp| {
         temp.* = 0;
     }
 
-    for (particles, 0..) |particle, i| {
+    for (particles) |particle| {
         const bin_info = getBinInfo(particle.x, particle.y);
         if (bin_info.bin_index < bin_count) {
             const bin_start = bin_offsets[bin_info.bin_index];
             const local_offset = bin_temp[bin_info.bin_index];
             const target_index = bin_start + local_offset;
 
-            // Safety check
             if (target_index < particle_count) {
-                particle_indices[target_index] = @intCast(i); // Store particle index, not particle
+                particle_temp[target_index] = particle; // Copy struct
                 bin_temp[bin_info.bin_index] += 1;
             }
         }
     }
-    // Now particle_indices[] contains particle indices sorted by bin
+
+    // Step 5: Swap pointers
+    // The temp buffer now contains sorted particles and becomes the main buffer
+    const temp = particles_ptr;
+    particles_ptr = particle_temp_ptr;
+    particle_temp_ptr = temp;
 }
 
 // ============================================================================
@@ -574,7 +572,7 @@ inline fn computeSingleForce(
 // SIMD-optimized force computation
 fn computeForcesSIMD() void {
     const particles = particles_ptr[0..particle_count];
-    const particle_indices = particle_indices_ptr[0..particle_count];
+    // const particle_indices = particle_indices_ptr[0..particle_count]; // REMOVED
     const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
     const forces = forces_ptr[0..(species_count * species_count)];
 
@@ -582,6 +580,7 @@ fn computeForcesSIMD() void {
     const height = sim_options.top - sim_options.bottom;
     const looping = sim_options.looping_borders;
 
+    // Iterate directly over sorted particles
     for (particles, 0..) |*particle, i| {
         const bin_info = getBinInfo(particle.x, particle.y);
 
@@ -628,15 +627,22 @@ fn computeForcesSIMD() void {
 
                 // SIMD loop: process 4 particles at once
                 while (idx_pos + 4 <= bin_end) : (idx_pos += 4) {
-                    const j0 = particle_indices[idx_pos + 0];
-                    const j1 = particle_indices[idx_pos + 1];
-                    const j2 = particle_indices[idx_pos + 2];
-                    const j3 = particle_indices[idx_pos + 3];
+                    // Direct load from sorted array!
+                    const other0 = particles[idx_pos + 0];
+                    const other1 = particles[idx_pos + 1];
+                    const other2 = particles[idx_pos + 2];
+                    const other3 = particles[idx_pos + 3];
 
-                    // Quick check if any is self (uncommon case)
+                    // Check for self-interaction (using memory address or index)
                     const i_u32 = @as(u32, @intCast(i));
-                    if (j0 == i_u32 or j1 == i_u32 or j2 == i_u32 or j3 == i_u32) {
-                        // Fall back to scalar for this batch
+                    if (i_u32 >= idx_pos and i_u32 < idx_pos + 4) {
+                        // Fallback to scalar for this batch to safely handle self
+                        // We need to process all 4, but skip self
+                        const j0 = idx_pos + 0;
+                        const j1 = idx_pos + 1;
+                        const j2 = idx_pos + 2;
+                        const j3 = idx_pos + 3;
+
                         computeSingleForce(particle, i_u32, j0, &total_fx, &total_fy, particles, forces, looping, width, height);
                         computeSingleForce(particle, i_u32, j1, &total_fx, &total_fy, particles, forces, looping, width, height);
                         computeSingleForce(particle, i_u32, j2, &total_fx, &total_fy, particles, forces, looping, width, height);
@@ -644,15 +650,8 @@ fn computeForcesSIMD() void {
                         continue;
                     }
 
-                    // Load 4 particle positions simultaneously
-                    const other0 = particles[j0];
-                    const other1 = particles[j1];
-                    const other2 = particles[j2];
-                    const other3 = particles[j3];
-
                     const ox = Vec4f32{ other0.x, other1.x, other2.x, other3.x };
                     const oy = Vec4f32{ other0.y, other1.y, other2.y, other3.y };
-
                     // Compute deltas (4 at once)
                     var dx = ox - px;
                     var dy = oy - py;
@@ -675,16 +674,17 @@ fn computeForcesSIMD() void {
                     const dist_sq = dx * dx + dy * dy;
                     const dist = @sqrt(dist_sq);
 
-                    // Process each force (force matrix lookup can't be easily vectorized)
-                    // But distance calculations are now 4x faster!
+                    // Process each force
                     for (0..4) |k| {
-                        const j = particle_indices[idx_pos + @as(u32, @intCast(k))];
-                        const other = particles[j];
+                        // Skip self (dist approx 0)
+                        if (dist[k] < 0.001) continue;
+
+                        const other = particles[idx_pos + @as(u32, @intCast(k))];
                         const force_idx = particle.species * species_count + other.species;
                         const force = forces[force_idx];
 
                         const d = dist[k];
-                        if (d > 0.0 and d < force.radius) {
+                        if (d < force.radius) {
                             const nx = dx[k] / d;
                             const ny = dy[k] / d;
 
@@ -703,8 +703,42 @@ fn computeForcesSIMD() void {
 
                 // Handle remaining particles (< 4) with scalar code
                 while (idx_pos < bin_end) : (idx_pos += 1) {
-                    const j = particle_indices[idx_pos];
-                    computeSingleForce(particle, @as(u32, @intCast(i)), j, &total_fx, &total_fy, particles, forces, looping, width, height);
+                    // Direct access
+                    if (idx_pos == i) continue; // Skip self
+
+                    const other = particles[idx_pos];
+                    const force_idx = particle.species * species_count + other.species;
+                    const force = forces[force_idx];
+
+                    var dx = other.x - particle.x;
+                    var dy = other.y - particle.y;
+
+                    if (looping) {
+                        if (abs(dx) >= width * 0.5) {
+                            dx -= sign(dx) * width;
+                        }
+                        if (abs(dy) >= height * 0.5) {
+                            dy -= sign(dy) * height;
+                        }
+                    }
+
+                    const dist_sq = dx * dx + dy * dy;
+                    const dist = sqrt(dist_sq);
+
+                    if (dist > 0.0 and dist < force.radius) {
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+
+                        const attraction_factor = @max(0.0, 1.0 - dist / force.radius);
+                        total_fx += force.strength * attraction_factor * nx;
+                        total_fy += force.strength * attraction_factor * ny;
+
+                        if (dist < force.collision_radius) {
+                            const collision_factor = @max(0.0, 1.0 - dist / force.collision_radius);
+                            total_fx -= force.collision_strength * collision_factor * nx;
+                            total_fy -= force.collision_strength * collision_factor * ny;
+                        }
+                    }
                 }
             }
         }
@@ -718,7 +752,7 @@ fn computeForcesSIMD() void {
 // Original scalar force computation (fallback)
 fn computeForces() void {
     const particles = particles_ptr[0..particle_count];
-    const particle_indices = particle_indices_ptr[0..particle_count];
+    // const particle_indices = particle_indices_ptr[0..particle_count]; // REMOVED
     const bin_offsets = bin_offsets_ptr[0..(bin_count + 1)];
     const forces = forces_ptr[0..(species_count * species_count)];
 
@@ -763,10 +797,9 @@ fn computeForces() void {
 
                 var idx_pos: u32 = bin_start;
                 while (idx_pos < bin_end) : (idx_pos += 1) {
-                    const j = particle_indices[idx_pos]; // Get actual particle index
-                    if (j == i) continue; // Skip self-interaction
+                    if (idx_pos == i) continue; // Skip self
 
-                    const other = particles[j];
+                    const other = particles[idx_pos]; // Direct access
                     const force_idx = particle.species * species_count + other.species;
                     const force = forces[force_idx];
 
