@@ -137,6 +137,8 @@ const Force = struct {
     radius: f32,
     collision_strength: f32,
     collision_radius: f32,
+    inv_radius: f32, // NEW: Precomputed 1.0 / radius
+    inv_collision_radius: f32, // NEW: Precomputed 1.0 / collision_radius
 };
 
 const SimulationOptions = struct {
@@ -382,6 +384,8 @@ export fn generateRandomSystem(symmetric_forces: bool) void {
                 .radius = radius,
                 .collision_strength = collision_strength,
                 .collision_radius = collision_radius,
+                .inv_radius = 1.0 / radius,
+                .inv_collision_radius = 1.0 / collision_radius,
             };
         }
     }
@@ -406,6 +410,14 @@ export fn generateRandomSystem(symmetric_forces: bool) void {
                 forces[idx_ji].collision_strength = collision_strength;
                 forces[idx_ij].collision_radius = collision_radius;
                 forces[idx_ji].collision_radius = collision_radius;
+
+                // Update precomputed values
+                const inv_r = 1.0 / radius;
+                const inv_cr = 1.0 / collision_radius;
+                forces[idx_ij].inv_radius = inv_r;
+                forces[idx_ji].inv_radius = inv_r;
+                forces[idx_ij].inv_collision_radius = inv_cr;
+                forces[idx_ji].inv_collision_radius = inv_cr;
             }
         }
     }
@@ -674,30 +686,66 @@ fn computeForcesSIMD() void {
                     const dist_sq = dx * dx + dy * dy;
                     const dist = @sqrt(dist_sq);
 
-                    // Process each force
-                    for (0..4) |k| {
-                        // Skip self (dist approx 0)
-                        if (dist[k] < 0.001) continue;
+                    // Gather force parameters
+                    var f_strength: Vec4f32 = undefined;
+                    var f_radius: Vec4f32 = undefined;
+                    var f_col_strength: Vec4f32 = undefined;
+                    var f_col_radius: Vec4f32 = undefined;
+                    var f_inv_radius: Vec4f32 = undefined;
+                    var f_inv_col_radius: Vec4f32 = undefined;
 
-                        const other = particles[idx_pos + @as(u32, @intCast(k))];
+                    // Manual gather (Zig/WASM doesn't have a gather instruction yet)
+                    // This is still faster than branching because it's linear memory access
+                    // and we process the physics with SIMD afterwards.
+                    inline for (0..4) |k| {
+                        const other = particles[idx_pos + k];
                         const force_idx = particle.species * species_count + other.species;
                         const force = forces[force_idx];
+                        f_strength[k] = force.strength;
+                        f_radius[k] = force.radius;
+                        f_col_strength[k] = force.collision_strength;
+                        f_col_radius[k] = force.collision_radius;
+                        f_inv_radius[k] = force.inv_radius;
+                        f_inv_col_radius[k] = force.inv_collision_radius;
+                    }
 
-                        const d = dist[k];
-                        if (d < force.radius) {
-                            const nx = dx[k] / d;
-                            const ny = dy[k] / d;
+                    // Vectorized Force Law
+                    // 1. Check range: dist > 0 and dist < radius
+                    const in_range = (dist > splat4(0.001)) & (dist < f_radius);
 
-                            const attraction_factor = @max(0.0, 1.0 - d / force.radius);
-                            total_fx += force.strength * attraction_factor * nx;
-                            total_fy += force.strength * attraction_factor * ny;
+                    if (@reduce(.Or, in_range)) {
+                        // Calculate normalized direction (avoid div by zero with select)
+                        // If dist is 0, we don't care about result because in_range will be false
+                        const safe_dist = @select(f32, dist > splat4(0.001), dist, splat4(1.0));
+                        const nx = dx / safe_dist;
+                        const ny = dy / safe_dist;
 
-                            if (d < force.collision_radius) {
-                                const collision_factor = @max(0.0, 1.0 - d / force.collision_radius);
-                                total_fx -= force.collision_strength * collision_factor * nx;
-                                total_fy -= force.collision_strength * collision_factor * ny;
-                            }
-                        }
+                        // Attraction: strength * (1 - dist / radius)
+                        // Optimized: strength * (1 - dist * inv_radius)
+                        const attr_factor = @max(splat4(0.0), splat4(1.0) - dist * f_inv_radius);
+                        var fx = f_strength * attr_factor * nx;
+                        var fy = f_strength * attr_factor * ny;
+
+                        // Collision: collision_strength * (1 - dist / collision_radius)
+                        // Optimized: collision_strength * (1 - dist * inv_collision_radius)
+                        const is_collision = dist < f_col_radius;
+                        const col_factor = @max(splat4(0.0), splat4(1.0) - dist * f_inv_col_radius);
+
+                        // Apply collision if needed
+                        const col_fx = f_col_strength * col_factor * nx;
+                        const col_fy = f_col_strength * col_factor * ny;
+
+                        fx = @select(f32, is_collision, fx - col_fx, fx);
+                        fy = @select(f32, is_collision, fy - col_fy, fy);
+
+                        // Mask out particles that are out of range
+                        const zero = splat4(0.0);
+                        fx = @select(f32, in_range, fx, zero);
+                        fy = @select(f32, in_range, fy, zero);
+
+                        // Accumulate
+                        total_fx += @reduce(.Add, fx);
+                        total_fy += @reduce(.Add, fy);
                     }
                 }
 
